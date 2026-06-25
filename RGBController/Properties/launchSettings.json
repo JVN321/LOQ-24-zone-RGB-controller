@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "RGBController (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "RGBController (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
