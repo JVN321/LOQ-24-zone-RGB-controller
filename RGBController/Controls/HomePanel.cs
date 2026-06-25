@@ -335,6 +335,7 @@ namespace RGBController.Controls
                 if (_currentPresetName != preset.Name)
                 {
                     SelectPresetByName(preset.Name);
+                    OsdPopup.Show(preset.DisplayName, parentForm);
                 }
             }
         }

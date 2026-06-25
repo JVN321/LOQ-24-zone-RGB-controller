@@ -329,12 +329,39 @@ namespace RGBController
             return vk != 0;
         }
 
+        private System.Collections.Generic.List<RGBController.Models.PresetMetadata>? _presetsCache;
+
+        private string GetPresetDisplayName(string name)
+        {
+            if (_presetsCache == null)
+            {
+                try
+                {
+                    string json = RgbInterop.GetPresetMetadata();
+                    _presetsCache = JsonSerializer.Deserialize<System.Collections.Generic.List<RGBController.Models.PresetMetadata>>(json);
+                }
+                catch { }
+            }
+
+            if (_presetsCache != null)
+            {
+                var preset = _presetsCache.Find(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                if (preset != null)
+                {
+                    return preset.DisplayName;
+                }
+            }
+            return name;
+        }
+
         private void CyclePresetAndNotify()
         {
             string nextPreset = RgbInterop.CyclePreset();
             if (!string.IsNullOrEmpty(nextPreset) && !nextPreset.StartsWith("Error"))
             {
                 SettingsManager.SaveActivePreset(nextPreset);
+                string displayName = GetPresetDisplayName(nextPreset);
+                OsdPopup.Show(displayName, this);
             }
             
             // Notify UI

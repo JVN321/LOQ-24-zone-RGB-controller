@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Win32;
 using RGBController.Interop;
 using RGBController.Models;
 using Color = System.Drawing.Color;
@@ -44,6 +45,7 @@ namespace RGBController.Controls
         private TrackBar delayTrackBar;
         private Label delayValueLabel;
 
+        private CheckBox launchOnStartupCheckBox;
         private CheckBox fixOnAppLaunchCheckBox;
 
         private Label hotkeyLabel;
@@ -93,6 +95,7 @@ namespace RGBController.Controls
             this.delayTrackBar = new TrackBar();
             this.delayValueLabel = new Label();
 
+            this.launchOnStartupCheckBox = new CheckBox();
             this.fixOnAppLaunchCheckBox = new CheckBox();
 
             this.hotkeyLabel = new Label();
@@ -137,7 +140,7 @@ namespace RGBController.Controls
             this.versionLabel.Location = new Point(24, 76);
             this.versionLabel.Name = "versionLabel";
             this.versionLabel.Size = new Size(99, 15);
-            this.versionLabel.Text = "v2.1.2-STABLE";
+            this.versionLabel.Text = "v2.3.0-STABLE";
 
             // 
             // statusPanel
@@ -218,11 +221,12 @@ namespace RGBController.Controls
             this.automationCard.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             this.automationCard.BorderStyle = BorderStyle.FixedSingle;
             this.automationCard.Controls.Add(this.fixOnAppLaunchCheckBox);
+            this.automationCard.Controls.Add(this.launchOnStartupCheckBox);
             this.automationCard.Controls.Add(this.delayPanel);
             this.automationCard.Controls.Add(this.autoFixCheckBox);
             this.automationCard.Location = new Point(24, 325);
             this.automationCard.Name = "automationCard";
-            this.automationCard.Size = new Size(420, 240);
+            this.automationCard.Size = new Size(420, 280);
             this.automationCard.TabIndex = 5;
 
             // 
@@ -282,13 +286,24 @@ namespace RGBController.Controls
             this.delayTrackBar.Scroll += new EventHandler(this.DelayTrackBar_Scroll);
 
             // 
+            // launchOnStartupCheckBox
+            // 
+            this.launchOnStartupCheckBox.AutoSize = true;
+            this.launchOnStartupCheckBox.Location = new Point(16, 180);
+            this.launchOnStartupCheckBox.Name = "launchOnStartupCheckBox";
+            this.launchOnStartupCheckBox.Size = new Size(260, 34);
+            this.launchOnStartupCheckBox.TabIndex = 2;
+            this.launchOnStartupCheckBox.Text = "Launch on System Startup\nAutomatically start the app when you log in.";
+            this.launchOnStartupCheckBox.UseVisualStyleBackColor = true;
+
+            // 
             // fixOnAppLaunchCheckBox
             // 
             this.fixOnAppLaunchCheckBox.AutoSize = true;
-            this.fixOnAppLaunchCheckBox.Location = new Point(16, 180);
+            this.fixOnAppLaunchCheckBox.Location = new Point(16, 220);
             this.fixOnAppLaunchCheckBox.Name = "fixOnAppLaunchCheckBox";
             this.fixOnAppLaunchCheckBox.Size = new Size(260, 34);
-            this.fixOnAppLaunchCheckBox.TabIndex = 2;
+            this.fixOnAppLaunchCheckBox.TabIndex = 3;
             this.fixOnAppLaunchCheckBox.Text = "Fix on Application Launch\nApply override when control panel initializes.";
             this.fixOnAppLaunchCheckBox.UseVisualStyleBackColor = true;
 
@@ -362,7 +377,7 @@ namespace RGBController.Controls
             // saveConfigButton
             // 
             this.saveConfigButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            this.saveConfigButton.Location = new Point(24, 540);
+            this.saveConfigButton.Location = new Point(24, 580);
             this.saveConfigButton.Name = "saveConfigButton";
             this.saveConfigButton.Size = new Size(820, 36);
             this.saveConfigButton.TabIndex = 10;
@@ -390,7 +405,7 @@ namespace RGBController.Controls
             this.Controls.Add(this.descLabel);
             this.Controls.Add(this.titleLabel);
             this.Name = "SettingsPanel";
-            this.Size = new Size(868, 592);
+            this.Size = new Size(868, 632);
 
             this.overrideCard.ResumeLayout(false);
             this.overrideCard.PerformLayout();
@@ -425,6 +440,10 @@ namespace RGBController.Controls
             this.autoFixCheckBox.BackColor = Theme.Card;
             this.autoFixCheckBox.ForeColor = Theme.TextPrimary;
             this.autoFixCheckBox.Font = Theme.FontBody;
+
+            this.launchOnStartupCheckBox.BackColor = Theme.Card;
+            this.launchOnStartupCheckBox.ForeColor = Theme.TextPrimary;
+            this.launchOnStartupCheckBox.Font = Theme.FontBody;
 
             this.fixOnAppLaunchCheckBox.BackColor = Theme.Card;
             this.fixOnAppLaunchCheckBox.ForeColor = Theme.TextPrimary;
@@ -513,6 +532,7 @@ namespace RGBController.Controls
                     autoFixCheckBox.Checked = _settings.AutoFixOnStartup;
                     delayTrackBar.Value = (int)Math.Clamp(_settings.StartupDelaySeconds, 30, 300);
                     delayValueLabel.Text = $"{_settings.StartupDelaySeconds}s";
+                    launchOnStartupCheckBox.Checked = IsLaunchOnStartupEnabled();
                     fixOnAppLaunchCheckBox.Checked = _settings.FixOnAppLaunch;
 
                     if (!string.IsNullOrEmpty(_settings.PresetCycleShortcut))
@@ -758,6 +778,17 @@ namespace RGBController.Controls
 
                 CheckStartupStatus();
 
+                // Handle launch-on-startup registry entry
+                try
+                {
+                    SetLaunchOnStartup(launchOnStartupCheckBox.Checked);
+                }
+                catch (Exception regEx)
+                {
+                    ShowStatus($"✗ LAUNCH ON STARTUP FAILED: {regEx.Message}", false);
+                    return;
+                }
+
                 // Refresh key mapping in main window
                 parentForm.LoadSettingsAndRegisterHotkey();
 
@@ -790,6 +821,41 @@ namespace RGBController.Controls
         {
             statusTimer.Stop();
             statusPanel.Visible = false;
+        }
+
+        // --- Launch on Startup via Registry Run key ---
+
+        private const string RunKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+        private const string RunValueName = "LOQ RGB Controller";
+
+        private static bool IsLaunchOnStartupEnabled()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, false);
+                return key?.GetValue(RunValueName) != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void SetLaunchOnStartup(bool enable)
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true)
+                ?? throw new InvalidOperationException("Cannot open registry Run key for writing.");
+
+            if (enable)
+            {
+                // Quote the exe path so paths with spaces work correctly
+                string exePath = $"\"{System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName}\"";
+                key.SetValue(RunValueName, exePath, RegistryValueKind.String);
+            }
+            else
+            {
+                key.DeleteValue(RunValueName, throwOnMissingValue: false);
+            }
         }
     }
 }
