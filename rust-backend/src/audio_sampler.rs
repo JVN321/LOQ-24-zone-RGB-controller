@@ -18,15 +18,17 @@ pub struct AudioSampler;
 impl AudioSampler {
     pub fn new() -> anyhow::Result<Self> {
         let mut stream_lock = STREAM.lock().unwrap();
-        if stream_lock.is_none() {
-            match Self::try_init_stream() {
-                Ok(stream) => {
-                    *stream_lock = Some(SendStream(stream));
-                }
-                Err(e) => {
-                    eprintln!("Failed to initialize audio loopback sampler: {}", e);
-                    // We don't return the error, we let the sampler run in silent fallback mode
-                }
+        // Always drop the old stream first to ensure a fresh one is created
+        *stream_lock = None;
+        INTENSITY.store(0f32.to_bits(), Ordering::Relaxed);
+
+        match Self::try_init_stream() {
+            Ok(stream) => {
+                *stream_lock = Some(SendStream(stream));
+            }
+            Err(e) => {
+                eprintln!("Failed to initialize audio loopback sampler: {}", e);
+                // We don't return the error, we let the sampler run in silent fallback mode
             }
         }
 

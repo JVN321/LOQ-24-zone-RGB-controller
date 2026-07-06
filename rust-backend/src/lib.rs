@@ -121,6 +121,9 @@ pub extern "C" fn rgb_init() -> i32 {
         std::thread::spawn(move || {
             let start_time = std::time::Instant::now();
             let mut last_update = std::time::Instant::now();
+            let mut consecutive_hid_failures: u32 = 0;
+            const MAX_CONSECUTIVE_FAILURES: u32 = 5;
+            const SLEEP_DELTA_THRESHOLD: f32 = 2.0; // seconds — anything above this means we just resumed
 
             loop {
                 // If AppState was destroyed, exit loop
@@ -133,15 +136,30 @@ pub extern "C" fn rgb_init() -> i32 {
                     continue;
                 }
 
+                let now = std::time::Instant::now();
+                let raw_delta = (now - last_update).as_secs_f32();
+                last_update = now;
+
+                // Sleep/resume detection: if the gap is huge, the system just woke up.
+                // Clamp delta to one normal frame so effects don't compute with a multi-hour delta.
+                let delta = if raw_delta > SLEEP_DELTA_THRESHOLD {
+                    // Reconnect the HID device — the old handle is almost certainly stale
+                    {
+                        let mut controller = loop_state.controller.lock().unwrap();
+                        let _ = controller.reconnect();
+                    }
+                    consecutive_hid_failures = 0;
+                    0.04 // one normal frame at 25fps
+                } else {
+                    raw_delta
+                };
+
+                let time = (now - start_time).as_secs_f32();
+
                 // Update current effect
                 {
                     let mut current_effect = loop_state.current_effect.lock().unwrap();
                     if let Some(ref mut effect) = *current_effect {
-                        let now = std::time::Instant::now();
-                        let time = (now - start_time).as_secs_f32();
-                        let delta = (now - last_update).as_secs_f32();
-                        last_update = now;
-
                         let mut controller = loop_state.controller.lock().unwrap();
                         effect.update(&mut controller, time, delta);
                     }
@@ -159,6 +177,23 @@ pub extern "C" fn rgb_init() -> i32 {
                     unsafe {
                         callback(frame.as_ptr(), frame.len() as i32);
                     }
+                }
+
+                // Passive reconnection: if HID writes are silently failing (effects use `let _ = ...`),
+                // detect via is_connected() check after the update and attempt recovery.
+                {
+                    let controller = loop_state.controller.lock().unwrap();
+                    if !controller.is_connected() {
+                        consecutive_hid_failures += 1;
+                    } else {
+                        consecutive_hid_failures = 0;
+                    }
+                }
+
+                if consecutive_hid_failures >= MAX_CONSECUTIVE_FAILURES {
+                    let mut controller = loop_state.controller.lock().unwrap();
+                    let _ = controller.reconnect();
+                    consecutive_hid_failures = 0;
                 }
 
                 std::thread::sleep(Duration::from_millis(40));

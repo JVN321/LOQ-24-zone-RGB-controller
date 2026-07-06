@@ -3,7 +3,7 @@
 ; To compile: Download Inno Setup (https://jrsoftware.org/isinfo.php), open this file, and press Build.
 
 #define AppName "LOQ RGB Controller"
-#define AppVersion "2.3.0"
+#define AppVersion "2.4.0"
 #define AppPublisher "DChitale"
 #define AppExeName "RGBController.exe"
 

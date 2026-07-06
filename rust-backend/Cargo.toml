@@ -1,6 +1,6 @@
 [package]
 name = "led-controller-driver"
-version = "2.3.0"
+version = "2.4.0"
 description = "Rust driver for lenovo 24 zone rgb keyboard"
 authors = ["Dhruv Goel"]
 edition = "2021"

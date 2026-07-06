@@ -140,7 +140,7 @@ namespace RGBController.Controls
             this.versionLabel.Location = new Point(24, 76);
             this.versionLabel.Name = "versionLabel";
             this.versionLabel.Size = new Size(99, 15);
-            this.versionLabel.Text = "v2.3.0-STABLE";
+            this.versionLabel.Text = "v2.4.0-STABLE";
 
             // 
             // statusPanel
@@ -631,6 +631,7 @@ namespace RGBController.Controls
 
         private void ShortcutButton_Click(object? sender, EventArgs e)
         {
+            parentForm.UnregisterCurrentHotkey();
             _isListeningShortcut = true;
             shortcutButton.Text = "PRESS KEY COMBINATION... (ESC to cancel, BACKSPACE/DELETE to clear)";
             shortcutButton.Focus();
@@ -648,6 +649,7 @@ namespace RGBController.Controls
             {
                 _isListeningShortcut = false;
                 shortcutButton.Text = string.IsNullOrEmpty(_settings.PresetCycleShortcut) ? "CLICK TO SET SHORTCUT" : _settings.PresetCycleShortcut;
+                parentForm.LoadSettingsAndRegisterHotkey();
                 return;
             }
 
@@ -656,6 +658,7 @@ namespace RGBController.Controls
                 _settings.PresetCycleShortcut = null;
                 _isListeningShortcut = false;
                 shortcutButton.Text = "CLICK TO SET SHORTCUT";
+                parentForm.LoadSettingsAndRegisterHotkey();
                 return;
             }
 
@@ -696,6 +699,7 @@ namespace RGBController.Controls
             _settings.PresetCycleShortcut = shortcut;
             _isListeningShortcut = false;
             shortcutButton.Text = shortcut;
+            parentForm.LoadSettingsAndRegisterHotkey();
         }
 
         private void AddPresetComboBox_SelectedIndexChanged(object? sender, EventArgs e)
@@ -849,7 +853,7 @@ namespace RGBController.Controls
             if (enable)
             {
                 // Quote the exe path so paths with spaces work correctly
-                string exePath = $"\"{System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName}\"";
+                string exePath = $"\"{System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName}\" --minimized";
                 key.SetValue(RunValueName, exePath, RegistryValueKind.String);
             }
             else

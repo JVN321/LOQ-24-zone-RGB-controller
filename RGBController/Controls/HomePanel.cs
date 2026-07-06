@@ -20,6 +20,7 @@ namespace RGBController.Controls
         private Models.Color[] _zoneColors = new Models.Color[24];
         private AppSettings _settings = new();
         private string _currentPresetName = string.Empty;
+        private volatile bool _pendingInvalidate = false; // throttle BeginInvoke after sleep/resume
 
         // UI Controls
         private KeyboardVisualizer keyboardVisualizer;
@@ -397,10 +398,32 @@ namespace RGBController.Controls
                     }
                 }
 
-                // Invalidate keyboard underglow on UI thread
+                // Invalidate keyboard underglow on UI thread.
+                // Throttle: skip if we already have a pending invalidate queued,
+                // which prevents flooding the UI thread after sleep/resume.
+                if (this.IsDisposed || !this.IsHandleCreated) return;
+
                 if (this.InvokeRequired)
                 {
-                    this.BeginInvoke(new Action(() => this.keyboardVisualizer.Invalidate()));
+                    if (!_pendingInvalidate)
+                    {
+                        _pendingInvalidate = true;
+                        try
+                        {
+                            this.BeginInvoke(new Action(() =>
+                            {
+                                _pendingInvalidate = false;
+                                if (!this.IsDisposed && this.IsHandleCreated)
+                                {
+                                    this.keyboardVisualizer.Invalidate();
+                                }
+                            }));
+                        }
+                        catch
+                        {
+                            _pendingInvalidate = false;
+                        }
+                    }
                 }
                 else
                 {

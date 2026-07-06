@@ -160,6 +160,13 @@ impl LedController {
         self.device = None;
     }
 
+    /// Drop the current (potentially stale) HID handle and reconnect.
+    /// Called automatically by the effect loop after detecting a resume from sleep.
+    pub fn reconnect(&mut self) -> Result<(), String> {
+        self.device = None;
+        self.connect()
+    }
+
     // ===================================================================
     // BUFFER MANAGEMENT
     // ===================================================================

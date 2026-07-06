@@ -50,7 +50,19 @@ namespace RGBController
 
             try
             {
-                Application.Run(new MainForm());
+                bool startMinimized = false;
+                string[] args = Environment.GetCommandLineArgs();
+                foreach (string arg in args)
+                {
+                    if (arg.Equals("--minimized", StringComparison.OrdinalIgnoreCase) ||
+                        arg.Equals("-minimized", StringComparison.OrdinalIgnoreCase) ||
+                        arg.Equals("/minimized", StringComparison.OrdinalIgnoreCase))
+                    {
+                        startMinimized = true;
+                        break;
+                    }
+                }
+                Application.Run(new MainForm(startMinimized));
             }
             finally
             {

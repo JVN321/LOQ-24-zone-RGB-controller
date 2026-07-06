@@ -6,6 +6,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Forms;
+using Microsoft.Win32;
 using RGBController.Interop;
 using RGBController.Controls;
 using AppSettings = RGBController.Models.AppSettings;
@@ -39,6 +40,8 @@ namespace RGBController
 
         private bool reallyClose = false;
         private bool isHotkeyRegistered = false;
+        private bool startMinimized = false;
+        private bool isFirstShow = true;
 
         // Active page panels
         private HomePanel? homePanel;
@@ -48,8 +51,9 @@ namespace RGBController
 
         public event Action? OnPresetCycled;
 
-        public MainForm()
+        public MainForm(bool startMinimized = false)
         {
+            this.startMinimized = startMinimized;
             InitializeComponent();
             ApplyTheme();
             LoadAppIcon();
@@ -59,6 +63,23 @@ namespace RGBController
 
             // Load initial brightness and settings
             LoadSettingsAndRegisterHotkey();
+
+            // Listen for sleep/resume to recover from stale HID handles
+            SystemEvents.PowerModeChanged += OnPowerModeChanged;
+        }
+
+        protected override void SetVisibleCore(bool value)
+        {
+            if (isFirstShow && startMinimized)
+            {
+                isFirstShow = false;
+                value = false;
+                if (!this.IsHandleCreated)
+                {
+                    CreateHandle();
+                }
+            }
+            base.SetVisibleCore(value);
         }
 
         private void ApplyTheme()
@@ -261,14 +282,19 @@ namespace RGBController
             catch { }
         }
 
-        private void RegisterGlobalHotkey(string? shortcut)
+        public void UnregisterCurrentHotkey()
         {
-            // Unregister first
             if (isHotkeyRegistered)
             {
                 UnregisterHotKey(this.Handle, 1);
                 isHotkeyRegistered = false;
             }
+        }
+
+        private void RegisterGlobalHotkey(string? shortcut)
+        {
+            // Unregister first
+            UnregisterCurrentHotkey();
 
             if (string.IsNullOrEmpty(shortcut)) return;
 
@@ -408,7 +434,8 @@ namespace RGBController
             }
             else
             {
-                // Shutting down, remove tray icon
+                // Shutting down, clean up
+                SystemEvents.PowerModeChanged -= OnPowerModeChanged;
                 trayIcon.Visible = false;
                 base.OnFormClosing(e);
             }
@@ -436,6 +463,34 @@ namespace RGBController
             this.Show();
             this.WindowState = FormWindowState.Normal;
             this.Activate();
+        }
+
+        private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+        {
+            if (e.Mode == PowerModes.Resume)
+            {
+                // The system just woke from sleep/hibernate.
+                // The Rust backend detects stale HID handles and reconnects automatically,
+                // but we also need to re-register the frame callback on the C# side
+                // because the UI thread may have had queued BeginInvoke calls that went stale.
+                try
+                {
+                    // Re-register the frame callback so the HomePanel visualizer resumes cleanly
+                    if (homePanel != null && !homePanel.IsDisposed)
+                    {
+                        // Force the HomePanel to re-setup its frame callback
+                        this.BeginInvoke(new Action(() =>
+                        {
+                            try
+                            {
+                                homePanel.ReloadPresetData();
+                            }
+                            catch { }
+                        }));
+                    }
+                }
+                catch { }
+            }
         }
     }
 }
