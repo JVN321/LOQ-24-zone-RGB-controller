@@ -8,19 +8,8 @@ use crate::led_driver::{LedController, Color, NUM_ZONES};
 
 const AMBIENT_WIDTH: usize = NUM_ZONES;
 const AMBIENT_HEIGHT: usize = 12;
-const LUMINANCE_THRESHOLD: f32 = 0.015;
 /// Boost saturation so colors stay rich instead of washing to white (1.0 = no change).
 const SATURATION_BOOST: f32 = 2.8;
-/// Slight brightness curve so midtones pop (1.0 = linear).
-const GAMMA: f32 = 0.78;
-/// How much faster the transition responds (higher = snappier follow).
-const TRANSITION_SPEED_MULT: f32 = 1.0;
-/// Suppress white/gray: luminance above this and low chroma = scale down (0 = off).
-const WHITE_LUMA_THRESHOLD: f32 = 0.48;
-const WHITE_CHROMA_THRESHOLD: f32 = 0.18;
-const WHITE_SUPPRESS: f32 = 0.42;
-/// Suppress blue: when blue is dominant, scale blue channel by this (1.0 = no suppress).
-// const BLUE_SUPPRESS: f32 = 0.5;
 
 const AMBIENT_TARGET_FPS: f32 = 45.0;
 
@@ -80,47 +69,6 @@ impl RgbF {
         }
     }
 
-    /// Apply gamma for richer midtones (gamma < 1 brightens midtones).
-    fn apply_gamma(self, gamma: f32) -> Self {
-        Self {
-            r: self.r.powf(gamma),
-            g: self.g.powf(gamma),
-            b: self.b.powf(gamma),
-        }
-    }
-
-    /// Suppress whites (bright near-neutral) and dominant blues so other colors stand out.
-    fn suppress_whites_and_blues(self) -> Self {
-        let (r, g, b) = (self.r, self.g, self.b);
-        let l = self.luminance();
-        let max_c = r.max(g).max(b);
-        let min_c = r.min(g).min(b);
-        let chroma = max_c - min_c;
-
-        // Suppress white/gray: high luminance + low chroma => scale down
-        let (r, g, b) = if l >= WHITE_LUMA_THRESHOLD && chroma < WHITE_CHROMA_THRESHOLD {
-            (
-                r * WHITE_SUPPRESS,
-                g * WHITE_SUPPRESS,
-                b * WHITE_SUPPRESS,
-            )
-        } else {
-            (r, g, b)
-        };
-
-        // Suppress blue when it's the dominant channel
-        // let (r, g, b) = if b >= r && b >= g && b > 0.12 {
-        //     (r, g, b * BLUE_SUPPRESS)
-        // } else {
-        //     (r, g, b)
-        // };
-
-        Self {
-            r: r.clamp(0.0, 1.0),
-            g: g.clamp(0.0, 1.0),
-            b: b.clamp(0.0, 1.0),
-        }
-    }
 }
 
 //
@@ -152,7 +100,9 @@ mod dxgi {
     };
 
     pub struct DxgiScreenSampler {
+        device: ID3D11Device,
         context: ID3D11DeviceContext,
+        output: IDXGIOutput1,
         duplication: IDXGIOutputDuplication,
         staging: ID3D11Texture2D,
         width: u32,
@@ -197,12 +147,11 @@ mod dxgi {
                             if let Ok(output1) = output.cast::<IDXGIOutput1>() {
                                 // Try to duplicate output. On laptops, this only succeeds on the GPU driving the display.
                                 if let Ok(duplication) = output1.DuplicateOutput(&dev) {
-                                    
-                                    let mut desc = std::mem::MaybeUninit::<DXGI_OUTPUT_DESC>::zeroed();
-                                    output.GetDesc(desc.as_mut_ptr())?;
-                                    let desc = desc.assume_init();
-                                    let width = (desc.DesktopCoordinates.right - desc.DesktopCoordinates.left) as u32;
-                                    let height = (desc.DesktopCoordinates.bottom - desc.DesktopCoordinates.top) as u32;
+                                    let mut dupl_desc = std::mem::MaybeUninit::<DXGI_OUTDUPL_DESC>::zeroed();
+                                    duplication.GetDesc(dupl_desc.as_mut_ptr());
+                                    let dupl_desc = dupl_desc.assume_init();
+                                    let width = dupl_desc.ModeDesc.Width;
+                                    let height = dupl_desc.ModeDesc.Height;
 
                                     let staging_desc = D3D11_TEXTURE2D_DESC {
                                         Width: width,
@@ -222,7 +171,9 @@ mod dxgi {
                                     
                                     if let Some(staging_tex) = staging {
                                         return Ok(Self {
+                                            device: dev,
                                             context: ctx,
+                                            output: output1,
                                             duplication,
                                             staging: staging_tex,
                                             width,
@@ -239,6 +190,43 @@ mod dxgi {
                 }
 
                 Err(anyhow::anyhow!("Failed to find an active DXGI adapter and output for screen capture"))
+            }
+        }
+
+        fn recreate_duplication(&mut self) -> anyhow::Result<()> {
+            unsafe {
+                let duplication = self.output.DuplicateOutput(&self.device)?;
+                let mut dupl_desc = std::mem::MaybeUninit::<DXGI_OUTDUPL_DESC>::zeroed();
+                duplication.GetDesc(dupl_desc.as_mut_ptr());
+                let dupl_desc = dupl_desc.assume_init();
+                let width = dupl_desc.ModeDesc.Width;
+                let height = dupl_desc.ModeDesc.Height;
+
+                if width != self.width || height != self.height {
+                    let staging_desc = D3D11_TEXTURE2D_DESC {
+                        Width: width,
+                        Height: height,
+                        MipLevels: 1,
+                        ArraySize: 1,
+                        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                        SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+                        Usage: D3D11_USAGE_STAGING,
+                        BindFlags: 0,
+                        CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+                        MiscFlags: 0,
+                    };
+
+                    let mut staging = None;
+                    self.device.CreateTexture2D(&staging_desc, None, Some(&mut staging))?;
+                    if let Some(staging_tex) = staging {
+                        self.staging = staging_tex;
+                        self.width = width;
+                        self.height = height;
+                    }
+                }
+
+                self.duplication = duplication;
+                Ok(())
             }
         }
 
@@ -264,7 +252,10 @@ mod dxgi {
                 let mut resource = None;
 
                 // Try to acquire frame - return false if no new frame available
-                if self.duplication.AcquireNextFrame(0, &mut frame_info, &mut resource).is_err() {
+                if let Err(e) = self.duplication.AcquireNextFrame(0, &mut frame_info, &mut resource) {
+                    if e.code() != DXGI_ERROR_WAIT_TIMEOUT {
+                        let _ = self.recreate_duplication();
+                    }
                     return false;
                 }
 
@@ -318,6 +309,11 @@ pub use dxgi::DxgiScreenSampler;
 //
 // ================= AMBIENT EFFECT =================
 //
+// Inspired by the fast-image-resize ambient approach:
+// capture → area-average to zone count → saturate → send.
+// Brightness is carried naturally by the color values (dark screen = dim keyboard).
+// The user's brightness slider still works as a multiplier (applied in flush_buffered).
+//
 
 pub struct AmbientEffect<S: ScreenSampler> {
     sampler: S,
@@ -354,43 +350,39 @@ impl<S: ScreenSampler> crate::effects::Effect for AmbientEffect<S> {
         self.last_sample_time = time;
 
         let mut buffer = [[RgbF::black(); AMBIENT_HEIGHT]; AMBIENT_WIDTH];
-        
-        // Only process if we got a new frame
+
         let got_new_frame = self.sampler.sample(&mut buffer);
-        
+
         if !got_new_frame {
-            // No new frame - use last valid sample to avoid processing stale/invalid data
             buffer = self.last_valid_sample;
         } else {
-            // Store this valid sample for future use
             self.last_valid_sample = buffer;
         }
 
-        // Faster response: higher effective smoothing. Smoother curve: smoothstep so transition eases in/out.
-        let raw_t = 1.0 - (-self.smoothing * delta * TRANSITION_SPEED_MULT).exp();
-        let t = raw_t * raw_t * (3.0 - 2.0 * raw_t);
-
         for x in 0..AMBIENT_WIDTH {
+            // Average all sample rows to get the zone color (area downsampling)
             let mut sum = RgbF::black();
             for y in 0..AMBIENT_HEIGHT {
                 sum = sum.add(buffer[x][y]);
             }
-
             let avg = sum.scale(1.0 / AMBIENT_HEIGHT as f32);
-            let target = if avg.luminance() < LUMINANCE_THRESHOLD {
-                // For very dark scenes, slowly fade to near-black
-                avg.scale(0.15)
+
+            // Saturate for richer colors (like photon_rs::saturate_hsv in the reference)
+            let target = avg.saturate(SATURATION_BOOST);
+
+            // Light smoothing (controlled by the smoothing parameter).
+            // smoothing=0 → instant (like the reference code), higher = smoother transitions.
+            let color = if self.smoothing > 0.01 {
+                let t = 1.0 - (-self.smoothing * delta * 4.0).exp();
+                let smoothed = self.last[x].lerp(target, t);
+                self.last[x] = smoothed;
+                smoothed
             } else {
-                avg
-                    .suppress_whites_and_blues()
-                    .saturate(SATURATION_BOOST)
-                    .apply_gamma(GAMMA)
+                self.last[x] = target;
+                target
             };
 
-            let smoothed = self.last[x].lerp(target, t);
-            self.last[x] = smoothed;
-
-            controller.set_zone(x, smoothed.to_color());
+            controller.set_zone(x, color.to_color());
         }
 
         let _ = controller.flush_buffered();
