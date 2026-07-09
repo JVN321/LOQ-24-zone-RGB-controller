@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
  // Using this to only send the frame data to the frontend for the keyboard widget
 
 const VID: u16 = 0x048d;
-const PID: u16 = 0xc693;
+const PID: u16 = 0xc195;
 pub const NUM_ZONES: usize = 24;
 const PACKET_SIZE: usize = 65; // HID report size (64 + 1 for report ID)
 
