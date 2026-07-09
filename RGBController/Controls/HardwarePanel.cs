@@ -94,7 +94,7 @@ namespace RGBController.Controls
             this.pidTextBox.Name = "pidTextBox";
             this.pidTextBox.Size = new Size(120, 23);
             this.pidTextBox.TabIndex = 2;
-            this.pidTextBox.Text = "C693";
+            this.pidTextBox.Text = "C195";
 
             // 
             // connectButton
