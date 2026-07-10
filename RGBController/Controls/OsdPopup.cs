@@ -100,6 +100,25 @@ namespace RGBController.Controls
             }
         }
 
+        /// <summary>
+        /// Immediately dismiss and dispose the current OSD popup if one exists.
+        /// Called during MainForm shutdown to prevent OpenForms collection modification during form closure.
+        /// </summary>
+        public static void DismissCurrent()
+        {
+            lock (_lock)
+            {
+                if (_current != null && !_current.IsDisposed)
+                {
+                    _current._fadeTimer.Stop();
+                    _current._holdTimer.Stop();
+                    _current.Close();
+                    _current.Dispose();
+                    _current = null;
+                }
+            }
+        }
+
         private void ShowPopup()
         {
             // Show without stealing focus

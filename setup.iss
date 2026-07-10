@@ -24,6 +24,11 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64
+; Ensure the install dir is fully removed on uninstall
+UninstallFilesDir={app}\uninstall
+; Close the running app before uninstalling
+CloseApplications=yes
+CloseApplicationsFilter=*.exe
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -42,3 +47,18 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+; Remove any files created at runtime inside the install folder (logs, debug output, etc.)
+Type: filesandordirs; Name: "{app}"
+
+[UninstallRun]
+; Remove the scheduled task created by the app
+Filename: "schtasks"; Parameters: "/delete /tn ""SetWindowsLightingOnTop"" /f"; Flags: runhidden; RunOnceId: "RemoveScheduledTask"
+; Remove the Registry Run key for launch-on-startup
+Filename: "reg"; Parameters: "delete ""HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"" /v ""LOQ RGB Controller"" /f"; Flags: runhidden; RunOnceId: "RemoveRunKey"
+; Remove the AppData\Roaming\LightingControl folder (settings.json, active_preset.txt, PowerShell script)
+Filename: "cmd"; Parameters: "/c rmdir /s /q ""%APPDATA%\LightingControl"""; Flags: runhidden; RunOnceId: "RemoveAppData"
+; Remove the stale PowerShell script from AppData root (created by installer.rs)
+Filename: "cmd"; Parameters: "/c del /f /q ""%APPDATA%\SetWindowsLightingOnTop.ps1"""; Flags: runhidden; RunOnceId: "RemoveStartupScript"
+

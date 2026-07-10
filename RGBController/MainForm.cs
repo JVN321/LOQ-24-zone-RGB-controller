@@ -434,8 +434,31 @@ namespace RGBController
             }
             else
             {
-                // Shutting down, clean up
+                // --- Full cleanup BEFORE base.OnFormClosing ---
+                // This prevents Application.OpenForms from being modified during enumeration.
+
                 SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+
+                // Stop the frame callback so the native backend stops invoking into managed code
+                try { RgbInterop.rgb_start_frame_callback(null); } catch { }
+
+                // Dismiss any active OSD popup (it's a Form in Application.OpenForms)
+                OsdPopup.DismissCurrent();
+
+                // Clear content panel and dispose child panels
+                this.contentPanel.Controls.Clear();
+                homePanel?.Dispose();
+                hardwarePanel?.Dispose();
+                consolePanel?.Dispose();
+                settingsPanel?.Dispose();
+                homePanel = null;
+                hardwarePanel = null;
+                consolePanel = null;
+                settingsPanel = null;
+
+                // Unregister global hotkey
+                UnregisterCurrentHotkey();
+
                 trayIcon.Visible = false;
                 base.OnFormClosing(e);
             }
