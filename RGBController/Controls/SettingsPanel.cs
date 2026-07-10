@@ -140,7 +140,7 @@ namespace RGBController.Controls
             this.versionLabel.Location = new Point(24, 76);
             this.versionLabel.Name = "versionLabel";
             this.versionLabel.Size = new Size(99, 15);
-            this.versionLabel.Text = "v3.1.1-STABLE";
+            this.versionLabel.Text = "v3.1.2-STABLE";
 
             // 
             // statusPanel
@@ -830,7 +830,7 @@ namespace RGBController.Controls
         // --- Launch on Startup via Registry Run key ---
 
         private const string RunKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-        private const string RunValueName = "LOQ RGB Controller";
+        private const string RunValueName = "Legion RGB Controller";
 
         private static bool IsLaunchOnStartupEnabled()
         {

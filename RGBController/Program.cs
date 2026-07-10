@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Windows.Forms;
 using RGBController.Interop;
 
@@ -6,9 +7,43 @@ namespace RGBController
 {
     internal static class Program
     {
+        private static Mutex? _appMutex;
+
         [STAThread]
         private static void Main()
         {
+            const string mutexName = @"Global\Legion-RGB-Controller-SingleInstance-Mutex";
+            _appMutex = new Mutex(true, mutexName, out bool createdNew);
+
+            if (!createdNew)
+            {
+                // Already running. Check if we should notify the user.
+                bool startMinimized = false;
+                string[] args = Environment.GetCommandLineArgs();
+                foreach (string arg in args)
+                {
+                    if (arg.Equals("--minimized", StringComparison.OrdinalIgnoreCase) ||
+                        arg.Equals("-minimized", StringComparison.OrdinalIgnoreCase) ||
+                        arg.Equals("/minimized", StringComparison.OrdinalIgnoreCase))
+                    {
+                        startMinimized = true;
+                        break;
+                    }
+                }
+
+                if (!startMinimized)
+                {
+                    MessageBox.Show(
+                        "RGB Controller is already running. You can access it from the system tray.",
+                        "Already Running",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+
+                _appMutex.Dispose();
+                return;
+            }
+
             Application.ThreadException += Application_ThreadException;
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 
@@ -67,6 +102,11 @@ namespace RGBController
             finally
             {
                 RgbInterop.rgb_shutdown();
+                if (_appMutex != null)
+                {
+                    _appMutex.ReleaseMutex();
+                    _appMutex.Dispose();
+                }
             }
         }
 

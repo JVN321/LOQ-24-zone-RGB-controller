@@ -87,7 +87,7 @@ namespace RGBController
             this.brandLabel.Name = "brandLabel";
             this.brandLabel.Size = new System.Drawing.Size(200, 70);
             this.brandLabel.TabIndex = 0;
-            this.brandLabel.Text = "LOQ LIGHTING";
+            this.brandLabel.Text = "LEGION LIGHTING";
             this.brandLabel.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
 
             // 
@@ -211,7 +211,7 @@ namespace RGBController
             // trayIcon
             // 
             this.trayIcon.ContextMenuStrip = this.trayMenu;
-            this.trayIcon.Text = "Lenovo LOQ RGB Controller";
+            this.trayIcon.Text = "Lenovo Legion RGB Controller";
             this.trayIcon.Visible = true;
             this.trayIcon.DoubleClick += new System.EventHandler(this.TrayIcon_DoubleClick);
 
@@ -225,7 +225,7 @@ namespace RGBController
             this.Controls.Add(this.sidebarPanel);
             this.Name = "MainForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "LOQ RGB Controller";
+            this.Text = "Legion RGB Controller";
             this.sidebarPanel.ResumeLayout(false);
             this.brandPanel.ResumeLayout(false);
             this.footerPanel.ResumeLayout(false);

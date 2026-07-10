@@ -56,7 +56,7 @@ Type: filesandordirs; Name: "{app}"
 ; Remove the scheduled task created by the app
 Filename: "schtasks"; Parameters: "/delete /tn ""SetWindowsLightingOnTop"" /f"; Flags: runhidden; RunOnceId: "RemoveScheduledTask"
 ; Remove the Registry Run key for launch-on-startup
-Filename: "reg"; Parameters: "delete ""HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"" /v ""LOQ RGB Controller"" /f"; Flags: runhidden; RunOnceId: "RemoveRunKey"
+Filename: "reg"; Parameters: "delete ""HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"" /v ""Legion RGB Controller"" /f"; Flags: runhidden; RunOnceId: "RemoveRunKey"
 ; Remove the AppData\Roaming\LightingControl folder (settings.json, active_preset.txt, PowerShell script)
 Filename: "cmd"; Parameters: "/c rmdir /s /q ""%APPDATA%\LightingControl"""; Flags: runhidden; RunOnceId: "RemoveAppData"
 ; Remove the stale PowerShell script from AppData root (created by installer.rs)

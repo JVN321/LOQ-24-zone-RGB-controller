@@ -430,7 +430,7 @@ namespace RGBController
             {
                 e.Cancel = true;
                 this.Hide();
-                trayIcon.ShowBalloonTip(2000, "LOQ RGB Controller", "App minimized to system tray. Double click icon to restore.", ToolTipIcon.Info);
+                trayIcon.ShowBalloonTip(2000, "Legion RGB Controller", "App minimized to system tray. Double click icon to restore.", ToolTipIcon.Info);
             }
             else
             {
