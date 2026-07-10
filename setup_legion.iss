@@ -18,7 +18,7 @@ DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 ; Output folder and setup file name
 OutputDir=.
-OutputBaseFilename=LOQ_RGB_Controller_Setup
+OutputBaseFilename=Legion_RGB_Controller_Setup
 SetupIconFile=RGBController\Assets\AppIcon.ico
 Compression=lzma
 SolidCompression=yes
