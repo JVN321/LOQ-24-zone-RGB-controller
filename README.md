@@ -1,17 +1,15 @@
-# Lenovo 24-Zone RGB Controller
+# Lenovo 24-Zone RGB Controller (Linux Port)
 
-[![WinUI 3 / .NET 8 / Rust](https://skillicons.dev/icons?i=dotnet,rust)](https://learn.microsoft.com/en-us/windows/apps/winui/winui3/)
+[![Linux / Rust](https://skillicons.dev/icons?i=linux,rust)](https://github.com/JVN321/LOQ-24-zone-RGB-controller)
 
-A lightweight, native high-performance Windows controller for managing 24 independent RGB zones on Lenovo devices. Powered by a high-performance native architecture using a Rust DLL backend (`rgb_backend.dll`) and a WinUI 3 (C# / .NET 8) desktop interface.
+A lightweight, native high-performance Linux port/controller for managing 24 independent RGB zones on Lenovo LOQ devices. This project features a high-performance background daemon and a premium Axum-powered Web Server with a responsive, glassmorphic UI.
 
 ## ✨ Features
 
 - **Granular Control:** 24 RGB zones with independent control.
-- **High Performance:** Low-latency updates for smooth animations up to 60 FPS, driven directly by a Rust backend with frame rendering synced through a high-frequency FFI callback.
-- **Minimal Footprint:** Replaced the previous WebView2/Chromium frontend with a native XAML compositor, reducing memory usage from ~200MB to ~40MB and start times to <500ms.
+- **High Performance:** Low-latency updates for smooth animations up to 60 FPS, driven directly by a Rust backend.
+- **Minimal Footprint:** Replaced system bloat with a native daemon, reducing memory usage and starting instantly.
 - **Modular Architecture:** Build and integrate new custom lighting presets in Rust with ease.
-- **System Tray Integration:** Run in background mode, minimize to tray on close, and trigger menu options.
-- **Global Hotkey:** Configurable system-wide hotkey to cycle presets instantly.
 - **Direct USB HID Control:** Speaks natively to the hardware backend.
 
 ## 🎨 Supported Effects
@@ -32,26 +30,7 @@ A lightweight, native high-performance Windows controller for managing 24 indepe
 - Chromatic Breath
 - **Audio Reactive:** Audio Sparkle, Audio Sparkle Rainbow, Audio Sparkle Media, Audio Ripple
 - **Typing Reactive:** Typing Rainbow Ripple
-
----
-
-## 🚀 Quick Start — Development (Windows)
-
-### Prerequisites
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- [Rust & Cargo](https://rustup.rs/) (MSVC toolchain)
-- Visual Studio build tools / Windows App SDK workload
-
-### Building and Running
-The repository includes a PowerShell script `build.ps1` to compile both the Rust DLL and the C# app:
-```powershell
-powershell -ExecutionPolicy Bypass -File build.ps1
-```
-
-Once the build is complete, you can run the native executable:
-```path
-RGBController\bin\x86\Release\net8.0-windows10.0.26100.0\win-x86\RGBController.exe
-```
+- **Multi-Effect Layering:** Stack, layer, and mix multiple effects together with customizable opacity, intensity, and priority levels.
 
 ---
 
@@ -137,15 +116,9 @@ sudo usermod -aG input $USER
 
 ## 🏗️ Architecture Overview
 
-- **Frontend (UI):** `RGBController/` — Built with WinUI 3 (XAML/C#) and .NET 8.
-  - *Main Shell:* [MainWindow.xaml](file:///d:/Projects/LOQ-24-zone-RGB-controller/RGBController/MainWindow.xaml)
-  - *Visual Canvas:* [HomePage.xaml](file:///d:/Projects/LOQ-24-zone-RGB-controller/RGBController/Pages/HomePage.xaml) using a Win2D `CanvasControl` with blur.
-  - *Interop Layer:* [RgbInterop.cs](file:///d:/Projects/LOQ-24-zone-RGB-controller/RGBController/Interop/RgbInterop.cs) for P/Invoke bindings.
-- **Backend (Rust):** `rust-backend/` — Manages the hardware driver, effect loops, and preset modules.
-  - *FFI DLL entry point:* `rust-backend/src/lib.rs` (compiles to `rgb_backend.dll`).
-  - *Hardware Driver:* `rust-backend/src/led_driver.rs`
-  - *Effect Protocols:* `rust-backend/src/presets/`
-- **Build Output:** `RGBController/bin/x86/Release/net8.0-windows10.0.26100.0/win-x86/`
+- **Frontend (UI):** Embedded HTML/CSS/JS page (`rgb-server/static/index.html`) using modern WebSockets and JSON REST API bindings for real-time visualization and settings adjustment.
+- **Server:** `rgb-server/` — An Axum web server hosting the REST endpoints and WebSocket broadcast hubs.
+- **Backend (Rust):** `rust-backend/` — Core Rust crate managing the Linux HID hardware drivers, reactive samplers (PipeWire, xcap/DBus, evdev), and preset modules.
 
 ---
 
@@ -161,9 +134,9 @@ You can implement customized static or dynamic effects using Rust. Use the `rust
    pub mod my_custom_effect;
    ```
 3. **Define Preset Metadata:**
-   In the `get_available_presets()` function inside `presets/mod.rs`, add your `PresetMetadata` config block. This will automatically expose your effect to the C# UI along with any adjustable parameters (Speed, Density, Size, Colors).
+   In the `get_available_presets()` function inside `presets/mod.rs`, add your `PresetMetadata` config block. This will automatically expose your effect to the web UI along with any adjustable parameters (Speed, Density, Size, Colors).
 4. **Hook into the Runner:**
-   In `rust-backend/src/lib.rs`, import your effect module and append it to the `match preset_name_lc` arm inside the `rgb_set_preset` function.
+   Open `rust-backend/src/lib.rs` and append your effect constructor mapping to the `build_effect` helper logic.
 
 ---
 
