@@ -58,6 +58,10 @@ struct StatusResponse {
     connected: bool,
     preset: String,
     brightness: f32,
+    preset_tweaks: std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, rgb_backend::presets::ParameterValue>,
+    >,
 }
 
 #[derive(Deserialize)]
@@ -124,10 +128,17 @@ async fn serve_ui() -> impl IntoResponse {
 /// GET /api/status
 async fn get_status(State(app): State<AppState>) -> impl IntoResponse {
     let s = app.ctrl.lock().unwrap();
+    let tweaks = if let Ok(cfg) = settings::load_settings() {
+        cfg.preset_tweaks
+    } else {
+        std::collections::HashMap::new()
+    };
+
     Json(StatusResponse {
         connected: s.controller.is_connected(),
         preset: s.current_preset.clone(),
         brightness: s.brightness,
+        preset_tweaks: tweaks,
     })
 }
 

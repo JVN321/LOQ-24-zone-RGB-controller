@@ -681,6 +681,7 @@ let selectedPreset = null;
 let paramValues = {};
 let ws = null;
 let brightnessDebounce = null;
+let presetTweaks = {};
 
 // Static Editor State
 let staticColors = Array(24).fill({ r: 255, g: 255, b: 255 });
@@ -759,7 +760,17 @@ async function refreshStatus() {
     }
     document.getElementById('brightnessSlider').value = Math.round(s.brightness * 100);
     document.getElementById('brightnessVal').textContent = Math.round(s.brightness * 100) + '%';
-    if (s.preset) highlightActive(s.preset);
+    
+    // Cache saved parameters
+    presetTweaks = s.preset_tweaks || {};
+
+    if (s.preset) {
+      highlightActive(s.preset);
+      const activePresetObj = presets.find(p => p.name === s.preset);
+      if (activePresetObj) {
+        selectPreset(activePresetObj);
+      }
+    }
   } catch(e) {}
 }
 
@@ -804,6 +815,60 @@ function selectPreset(preset) {
   selectedPreset = preset;
   paramValues = {};
   highlightActive(preset.name);
+  
+  const tweaks = presetTweaks[preset.name];
+  if (tweaks) {
+    preset.parameters.forEach(p => {
+      if (tweaks[p.name] !== undefined) {
+        paramValues[p.name] = tweaks[p.name].value;
+      } else {
+        if (p.param_type.type === 'Color') {
+          paramValues[p.name] = { r: p.param_type.r, g: p.param_type.g, b: p.param_type.b };
+        } else {
+          paramValues[p.name] = p.default;
+        }
+      }
+    });
+
+    if (preset.name === 'staticColor') {
+      for (let i = 1; i <= 24; i++) {
+        const k = `color${i}`;
+        if (tweaks[k] !== undefined) {
+          staticColors[i - 1] = tweaks[k].value;
+        }
+        paramValues[k] = staticColors[i - 1];
+      }
+    }
+
+    if (preset.name === 'layered') {
+      if (tweaks['config'] !== undefined) {
+        try {
+          const configStr = tweaks['config'].value;
+          layeredConfig = JSON.parse(configStr);
+          paramValues['config'] = configStr;
+        } catch(e) {
+          layeredConfig = [];
+          paramValues['config'] = "[]";
+        }
+      } else {
+        layeredConfig = [];
+        paramValues['config'] = "[]";
+      }
+    }
+  } else {
+    if (preset.name === 'staticColor') {
+      paramValues = {};
+      for (let i = 1; i <= 24; i++) {
+        paramValues[`color${i}`] = staticColors[i - 1];
+      }
+    } else if (preset.name === 'layered') {
+      layeredConfig = [];
+      paramValues['config'] = "[]";
+    } else {
+      paramValues = getDefaultParams(preset.name);
+    }
+  }
+
   renderParams(preset);
 }
 
@@ -841,9 +906,21 @@ function renderParams(preset) {
     const card = document.createElement('div');
     card.className = 'param-card';
 
+    // Get current/saved value or fallback to default
+    if (paramValues[p.name] === undefined) {
+      if (p.name === 'audio_source') {
+        paramValues[p.name] = p.default;
+      } else if (p.param_type.type === 'Color') {
+        paramValues[p.name] = { r: p.param_type.r, g: p.param_type.g, b: p.param_type.b };
+      } else {
+        paramValues[p.name] = p.default;
+      }
+    }
+
+    const val = paramValues[p.name];
+
     // Check if it is the audio_source selector
     if (p.name === 'audio_source') {
-      paramValues[p.name] = p.default;
       card.innerHTML = `
         <div class="param-label">${p.label}</div>
         <select class="param-select" id="param-${p.name}">
@@ -853,14 +930,12 @@ function renderParams(preset) {
         </select>
       `;
       const select = card.querySelector('select');
-      select.value = Math.round(p.default).toString();
+      select.value = Math.round(val).toString();
       select.addEventListener('change', e => {
         paramValues[p.name] = parseFloat(e.target.value);
       });
     } else if (p.param_type.type === 'Color') {
-      const def = p.param_type;
-      const hex = rgbToHex(def.r, def.g, def.b);
-      paramValues[p.name] = { r: def.r, g: def.g, b: def.b };
+      const hex = rgbToHex(val.r, val.g, val.b);
 
       card.innerHTML = `
         <div class="param-label">${p.label}</div>
@@ -875,13 +950,13 @@ function renderParams(preset) {
       });
     } else {
       // Standard Float Slider
-      paramValues[p.name] = p.default;
+      const precisionStr = val.toFixed(p.step < 0.1 ? 2 : p.step < 1 ? 1 : 0);
       card.innerHTML = `
         <div class="param-label">${p.label}</div>
         <div class="param-slider-row">
           <input type="range" id="param-${p.name}"
-            min="${p.min}" max="${p.max}" step="${p.step}" value="${p.default}">
-          <div class="param-val" id="pval-${p.name}">${p.default}</div>
+            min="${p.min}" max="${p.max}" step="${p.step}" value="${val}">
+          <div class="param-val" id="pval-${p.name}">${precisionStr}</div>
         </div>
       `;
       const slider = card.querySelector('input');
@@ -1333,6 +1408,17 @@ async function applyPreset() {
     const res = await api('POST', '/api/preset', { preset: selectedPreset.name, params });
     if (res.ok) {
       toast(`✦ ${selectedPreset.display_name} activated`, 'ok');
+      
+      if (!presetTweaks[selectedPreset.name]) {
+        presetTweaks[selectedPreset.name] = {};
+      }
+      for (const [k, v] of Object.entries(params)) {
+        if (v && typeof v === 'object' && v.r !== undefined) {
+          presetTweaks[selectedPreset.name][k] = { type: 'Color', value: v };
+        } else {
+          presetTweaks[selectedPreset.name][k] = { type: 'Float', value: v };
+        }
+      }
     } else {
       toast('Error: ' + (res.error || 'Unknown'), 'err');
     }

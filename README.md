@@ -55,6 +55,86 @@ RGBController\bin\x86\Release\net8.0-windows10.0.26100.0\win-x86\RGBController.e
 
 ---
 
+## 🚀 Quick Start — Development (Linux)
+
+The Linux port provides a lightweight background daemon and Axum-powered Web Server with a responsive, glassmorphic UI to control the keyboard zones and settings.
+
+### 📋 Prerequisites & Packages
+
+Ensure the following system dependencies are installed before building.
+
+#### 📦 Fedora (Workstation/Silverblue/etc.)
+```bash
+sudo dnf install -y \
+    alsa-lib-devel \
+    libX11-devel \
+    libXi-devel \
+    libXrandr-devel \
+    hidapi-devel \
+    pkgconf-pkg-config \
+    gcc \
+    wayland-devel \
+    libxkbcommon-devel \
+    mesa-libEGL-devel \
+    mesa-libgbm-devel \
+    pipewire-devel \
+    dbus-devel \
+    clang
+```
+
+#### 📦 Debian / Ubuntu
+```bash
+sudo apt-get update && sudo apt-get install -y \
+    libasound2-dev \
+    libx11-dev \
+    libxi-dev \
+    libxrandr-dev \
+    libhidapi-dev \
+    pkg-config \
+    build-essential \
+    libwayland-dev \
+    libxkbcommon-dev \
+    libegl1-mesa-dev \
+    libgbm-dev \
+    libpipewire-0.3-dev \
+    libdbus-1-dev \
+    clang
+```
+
+### 🔌 Hardware Permissions (udev)
+
+To allow the server to write to the USB HID interface without running as `root`, copy the udev rule and configure groups:
+
+```bash
+# 1. Copy the udev rule
+sudo cp 99-loq-rgb.rules /etc/udev/rules.d/
+
+# 2. Reload and trigger rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+# 3. Add your user to the plugdev (or input) group
+sudo usermod -aG plugdev $USER
+sudo usermod -aG input $USER
+
+# Log out and log back in (or use 'newgrp plugdev' and 'newgrp input')
+```
+
+### 🛠️ Building and Running
+
+1. **Compile Backend and Server:**
+   ```bash
+   ./build.sh
+   ```
+2. **Start the Controller Daemon:**
+   ```bash
+   ./target/release/rgb-server
+   ```
+3. **Open the Controller UI:**
+   Navigate to [http://127.0.0.1:7070](http://127.0.0.1:7070) in your web browser.
+
+---
+
 ## 🏗️ Architecture Overview
 
 - **Frontend (UI):** `RGBController/` — Built with WinUI 3 (XAML/C#) and .NET 8.
