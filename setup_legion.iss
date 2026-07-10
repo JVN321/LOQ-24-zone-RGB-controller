@@ -1,9 +1,9 @@
 ; setup.iss
-; Inno Setup Script for LOQ RGB Controller
+; Inno Setup Script for Legion RGB Controller
 ; To compile: Download Inno Setup (https://jrsoftware.org/isinfo.php), open this file, and press Build.
 
-#define AppName "LOQ RGB Controller"
-#define AppVersion "3.1.1"
+#define AppName "Legion RGB Controller"
+#define AppVersion "3.1.2"
 #define AppPublisher "DChitale"
 #define AppExeName "RGBController.exe"
 
