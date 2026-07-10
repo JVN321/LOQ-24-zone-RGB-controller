@@ -1,0 +1,17 @@
+[package]
+name = "rgb-server"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rgb-server"
+path = "src/main.rs"
+
+[dependencies]
+rgb_backend = { path = "../rust-backend", package = "led-controller-driver" }
+axum = { version = "0.7", features = ["ws"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.5", features = ["cors"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+once_cell = "1.19"

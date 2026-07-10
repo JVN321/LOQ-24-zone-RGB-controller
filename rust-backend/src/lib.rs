@@ -5,14 +5,14 @@ use std::collections::HashMap;
 use std::time::Duration;
 use once_cell::sync::Lazy;
 
-mod audio_sampler;
-mod input_handler;
-mod effects;
-mod installer;
-mod led_driver;
-mod lighting;
-mod presets;
-mod settings;
+pub mod audio_sampler;
+pub mod input_handler;
+pub mod effects;
+pub mod installer;
+pub mod led_driver;
+pub mod lighting;
+pub mod presets;
+pub mod settings;
 
 use crate::effects::Effect;
 use crate::led_driver::{Color, LedController};
@@ -32,15 +32,26 @@ use crate::presets::{
     sweep::RgbSweepEffect,
     wheel::ColorWheelEffect,
     thermalStatus::ThermalStatusEffect,
-    ambient::AmbientEffect,
     audio_sparkle::AudioSparkleEffect,
     audio_sparkle_rainbow::AudioSparkleRainbowEffect,
-    audio_sparkle_media::AudioSparkleMediaEffect,
     audio_ripple::AudioRippleEffect,
     rainbow_ripple::RainbowRippleEffect,
     ParameterValue,
     PresetConfig,
 };
+use crate::presets::{
+    ambient::AmbientEffect,
+    audio_sparkle_media::AudioSparkleMediaEffect,
+};
+
+/// Public entry point for the web-server binary to build an effect without FFI.
+/// Returns a boxed Effect or an error string.
+pub fn build_effect(
+    name: &str,
+    parameters: std::collections::HashMap<String, ParameterValue>,
+) -> Result<Box<dyn Effect>, String> {
+    apply_preset_raw(name.to_string(), parameters)
+}
 
 const NUM_ZONES: usize = 24;
 
@@ -106,7 +117,8 @@ pub extern "C" fn rgb_init() -> i32 {
         // Start key listener
         input_handler::start_key_listener();
 
-        // Run startup fixes if configured
+        // Run startup fixes if configured (Windows-only features)
+        #[cfg(target_os = "windows")]
         if settings.auto_fix_on_startup {
             if !installer::is_startup_task_installed() {
                 let _ = installer::create_startup_task(settings.startup_delay_seconds);
@@ -535,19 +547,140 @@ pub extern "C" fn rgb_free_string(ptr: *mut c_char) {
 }
 
 // ===================================================================
-// EFFECT DISPATCH (PORTED FROM MAIN.RS)
+// EFFECT DISPATCH
 // ===================================================================
+
+/// Public: build a boxed Effect from a name+params map, without needing AppState.
+/// Used by the web-server binary and by apply_preset internally.
+pub fn apply_preset_raw(
+    preset_name: String,
+    parameters: HashMap<String, ParameterValue>,
+) -> Result<Box<dyn Effect>, String> {
+    let preset_config = PresetConfig { name: preset_name, parameters };
+    let preset_name_lc = preset_config.name.to_lowercase();
+    build_effect_inner(&preset_name_lc, &preset_config)
+}
+
+fn build_effect_inner(
+    name_lc: &str,
+    preset_config: &PresetConfig,
+) -> Result<Box<dyn Effect>, String> {
+    macro_rules! getf {
+        ($k:expr, $d:expr) => {
+            preset_config.parameters.get($k)
+                .and_then(|v| match v { ParameterValue::Float(f) => Some(*f), _ => None })
+                .unwrap_or($d)
+        };
+    }
+    macro_rules! getc {
+        ($k:expr, $r:expr, $g:expr, $b:expr) => {
+            preset_config.parameters.get($k)
+                .and_then(|v| match v { ParameterValue::Color { r, g, b } => Some(Color::new(*r, *g, *b)), _ => None })
+                .unwrap_or(Color::new($r, $g, $b))
+        };
+    }
+    let e: Box<dyn Effect> = match name_lc {
+        "staticcolor"       => {
+            let mut colors = [Color::white(); 24];
+            for i in 0..24 {
+                let key = format!("color{}", i + 1);
+                colors[i] = getc!(&key, 255, 255, 255);
+            }
+            Box::new(crate::presets::staticColor::StaticEffect::new(colors))
+        }
+        "off"               => Box::new(OffEffect::new()),
+        "rainbowcycle"      => Box::new(RainbowCycleEffect::new(getf!("speed", 1.0))),
+        "rainbowwave"       => Box::new(RainbowWaveEffect::new(getf!("speed", 1.0))),
+        "sweep"             => Box::new(RgbSweepEffect::new()),
+        "rainbowbreath"     => Box::new(RainbowBreathEffect::new(getf!("speed", 1.0))),
+        "thermalstatus"     => Box::new(ThermalStatusEffect::new()),
+        "breathing"         => Box::new(ColorBreathEffect::new(getc!("color", 255, 0, 0), getf!("speed", 1.0))),
+        "horse"             => Box::new(HorseEffect::new(getf!("speed", 1.0), getf!("length", 3.0), getc!("base_color", 20, 20, 25), getc!("horse_color", 120, 140, 180))),
+        "horsecycle"        => Box::new(SmoothHorseCycleEffect::new(getf!("speed", 1.0), getf!("length", 3.0))),
+        "rpm"               => Box::new(FerrariRpmEffect::new()),
+        "pulse"             => Box::new(PulseCenterEffect::new(getc!("color", 255, 0, 0), getf!("speed", 1.0))),
+        "wheel"             => Box::new(ColorWheelEffect::new(getf!("speed", 0.5))),
+        "aurora"            => Box::new(AuroraEffect::new(getf!("speed", 0.5))),
+        "scan"              => Box::new(ColorScanEffect::new(getf!("speed", 1.0))),
+        "sparkle"           => Box::new(SparkleEffect::new(getf!("density", 0.1))),
+        "nebula"            => Box::new(crate::presets::nebula::NebulaEffect::new(getf!("speed", 1.0))),
+        "chromaticbreath"   => Box::new(crate::presets::chromaticBreath::ChromaticBreathEffect::new(getf!("speed", 1.0))),
+        "audio_sparkle" => {
+            let sampler = crate::audio_sampler::AudioSampler::new(getf!("audio_source", 0.0)).map_err(|e| e.to_string())?;
+            Box::new(AudioSparkleEffect::new(sampler, getf!("sensitivity", 1.0), getf!("base_density", 0.05)))
+        }
+        "audio_sparkle_rainbow" => {
+            let sampler = crate::audio_sampler::AudioSampler::new(getf!("audio_source", 0.0)).map_err(|e| e.to_string())?;
+            Box::new(AudioSparkleRainbowEffect::new(sampler, getf!("sensitivity", 1.0), getf!("base_density", 0.0), getf!("rainbow_speed", 1.0)))
+        }
+        "audio_ripple" => {
+            let sampler = crate::audio_sampler::AudioSampler::new(getf!("audio_source", 0.0)).map_err(|e| e.to_string())?;
+            Box::new(AudioRippleEffect::new(sampler, getf!("sensitivity", 1.0), getf!("speed", 40.0), getf!("width", 3.0), getf!("lifetime", 0.8)))
+        }
+        "rainbow_ripple"    => Box::new(RainbowRippleEffect::new(getf!("speed", 40.0), getf!("width", 3.0), getf!("lifetime", 0.8))),
+        "ambient" => {
+            let smoothing = getf!("smoothing", 1.0);
+            let mut sampler = crate::presets::ambient::DxgiScreenSampler::new().map_err(|e| e.to_string())?;
+            let l = preset_config.parameters.get("sample_left").and_then(|v| match v { ParameterValue::Float(f) => Some(*f), _ => None });
+            let w = preset_config.parameters.get("sample_width").and_then(|v| match v { ParameterValue::Float(f) => Some(*f), _ => None });
+            if let (Some(l), Some(w)) = (l, w) { sampler.set_sample_horizontal_region(l, w); }
+            else if let Ok(s) = crate::settings::load_settings() { sampler.set_sample_horizontal_region(s.ambient_sample_left_fraction, s.ambient_sample_width_fraction); }
+            Box::new(AmbientEffect::new(sampler, smoothing))
+        }
+        "audio_sparkle_media" => {
+            let sampler_audio = crate::audio_sampler::AudioSampler::new(getf!("audio_source", 0.0)).map_err(|e| e.to_string())?;
+            let mut sampler_media = crate::presets::ambient::DxgiScreenSampler::new().map_err(|e| e.to_string())?;
+            sampler_media.set_sample_top_fraction(0.15);
+            sampler_media.set_sample_horizontal_region(0.0, 1.0);
+            Box::new(AudioSparkleMediaEffect::new(sampler_audio, sampler_media, getf!("sensitivity", 1.0), getf!("base_density", 0.0)))
+        }
+        "layered" => {
+            #[derive(serde::Deserialize)]
+            struct LayerConfig {
+                name: String,
+                opacity: f32,
+                priority: i32,
+                parameters: HashMap<String, serde_json::Value>,
+            }
+            let config_str = match preset_config.parameters.get("config") {
+                Some(ParameterValue::String(s)) => s,
+                _ => return Err("Missing or invalid 'config' parameter for layered effect".to_string()),
+            };
+            let layers: Vec<LayerConfig> = serde_json::from_str(config_str)
+                .map_err(|e| format!("Invalid layered config JSON: {}", e))?;
+            
+            let mut effect_layers = Vec::new();
+            for layer in layers {
+                let name_lc = layer.name.to_lowercase();
+                let mut converted_params = HashMap::new();
+                for (k, v) in layer.parameters {
+                    let pv = ParameterValue::from_json(&v)
+                        .ok_or_else(|| format!("Invalid value for param '{}' in layer '{}'", k, layer.name))?;
+                    converted_params.insert(k, pv);
+                }
+                let sub_preset_config = PresetConfig {
+                    name: layer.name,
+                    parameters: converted_params,
+                };
+                let sub_effect = build_effect_inner(&name_lc, &sub_preset_config)?;
+                effect_layers.push(crate::presets::layered::EffectLayer {
+                    effect: sub_effect,
+                    opacity: layer.opacity,
+                    priority: layer.priority,
+                });
+            }
+            Box::new(crate::presets::layered::LayeredEffect::new(effect_layers))
+        }
+        _ => return Err(format!("Unknown preset: {}", preset_config.name)),
+    };
+    Ok(e)
+}
 
 fn apply_preset(
     preset_name: String,
     parameters: HashMap<String, ParameterValue>,
     state: &AppState,
 ) -> Result<String, String> {
-    let preset_config = PresetConfig {
-        name: preset_name,
-        parameters,
-    };
-
     // Stop current effect
     {
         let mut current_effect = state.current_effect.lock().unwrap();
@@ -561,434 +694,19 @@ fn apply_preset(
     {
         let mut params = state.current_preset_params.lock().unwrap();
         params.clear();
-        for (key, value) in &preset_config.parameters {
+        for (key, value) in &parameters {
             params.insert(key.clone(), value.clone());
         }
     }
 
-    // Create new effect based on preset name (case-insensitive match)
-    let preset_name_lc = preset_config.name.to_lowercase();
-    let new_effect: Box<dyn Effect> = match preset_name_lc.as_str() {
-        "staticcolor" => {
-            let color = preset_config
-                .parameters
-                .get("color")
-                .and_then(|v| match v {
-                    ParameterValue::Color { r, g, b } => Some(Color::new(*r, *g, *b)),
-                    _ => None,
-                })
-                .unwrap_or(Color::new(255, 255, 200));
-            Box::new(crate::presets::staticColor::StaticEffect::new(color))
-        }
-        "off" => Box::new(OffEffect::new()),
-        "rainbowcycle" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            Box::new(RainbowCycleEffect::new(speed))
-        }
-        "rainbowwave" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            Box::new(RainbowWaveEffect::new(speed))
-        }
-        "ambient" => {
-            #[cfg(not(target_os = "windows"))]
-            return Err("Ambient effect is only supported on Windows".to_string());
-            #[cfg(target_os = "windows")]
-            {
-                let smoothing: f32 = preset_config
-                    .parameters
-                    .get("smoothing")
-                    .and_then(|v| match v {
-                        ParameterValue::Float(f) => Some(*f),
-                        _ => None,
-                    })
-                    .unwrap_or(1.0);
+    let name_copy = preset_name.clone();
+    let new_effect = apply_preset_raw(preset_name, parameters)?;
 
-                let mut sampler = crate::presets::ambient::DxgiScreenSampler::new()
-                    .map_err(|e| e.to_string())?;
-
-                let preset_left = preset_config
-                    .parameters
-                    .get("sample_left")
-                    .and_then(|v| match v { ParameterValue::Float(f) => Some(*f), _ => None });
-                let preset_width = preset_config
-                    .parameters
-                    .get("sample_width")
-                    .and_then(|v| match v { ParameterValue::Float(f) => Some(*f), _ => None });
-
-                if let (Some(l), Some(w)) = (preset_left, preset_width) {
-                    sampler.set_sample_horizontal_region(l, w);
-                } else if let Ok(s) = crate::settings::load_settings() {
-                    sampler.set_sample_horizontal_region(
-                        s.ambient_sample_left_fraction,
-                        s.ambient_sample_width_fraction,
-                    );
-                }
-
-                Box::new(AmbientEffect::new(sampler, smoothing))
-            }
-        },
-        "sweep" => Box::new(RgbSweepEffect::new()),
-        "rainbowbreath" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            Box::new(RainbowBreathEffect::new(speed))
-        }
-        "thermalstatus" => {
-            Box::new(ThermalStatusEffect::new())
-        }
-        "breathing" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            let color = preset_config
-                .parameters
-                .get("color")
-                .and_then(|v| match v {
-                    ParameterValue::Color { r, g, b } => Some(Color::new(*r, *g, *b)),
-                    _ => None,
-                })
-                .unwrap_or(Color::new(255, 0, 0));
-            Box::new(ColorBreathEffect::new(color, speed))
-        }
-        "horse" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            let length = preset_config
-                .parameters
-                .get("length")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(3.0);
-            let base_color = preset_config
-                .parameters
-                .get("base_color")
-                .and_then(|v| match v {
-                    ParameterValue::Color { r, g, b } => Some(Color::new(*r, *g, *b)),
-                    _ => None,
-                })
-                .unwrap_or(Color::new(20, 20, 25));
-
-            let horse_color = preset_config
-                .parameters
-                .get("horse_color")
-                .and_then(|v| match v {
-                    ParameterValue::Color { r, g, b } => Some(Color::new(*r, *g, *b)),
-                    _ => None,
-                })
-                .unwrap_or(Color::new(120, 140, 180));
-
-            Box::new(HorseEffect::new(speed, length, base_color, horse_color))
-        }
-        "horsecycle" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            let length = preset_config
-                .parameters
-                .get("length")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(3.0);
-
-            Box::new(SmoothHorseCycleEffect::new(speed, length))
-        }
-        "rpm" => {
-            Box::new(FerrariRpmEffect::new())
-        }
-        "pulse" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            let color = preset_config
-                .parameters
-                .get("color")
-                .and_then(|v| match v {
-                    ParameterValue::Color { r, g, b } => Some(Color::new(*r, *g, *b)),
-                    _ => None,
-                })
-                .unwrap_or(Color::new(255, 0, 0));
-            Box::new(PulseCenterEffect::new(color, speed))
-        }
-        "wheel" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(0.5);
-            Box::new(ColorWheelEffect::new(speed))
-        }
-        "aurora" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(0.5);
-            Box::new(AuroraEffect::new(speed))
-        }
-        "scan" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            Box::new(ColorScanEffect::new(speed))
-        }
-        "sparkle" => {
-            let density = preset_config
-                .parameters
-                .get("density")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(0.1);
-            Box::new(SparkleEffect::new(density))
-        }
-        "audio_sparkle" => {
-            let sensitivity: f32 = preset_config
-                .parameters
-                .get("sensitivity")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            
-            let base_density: f32 = preset_config
-                .parameters
-                .get("base_density")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(0.05);
-
-            let sampler = crate::audio_sampler::AudioSampler::new()
-                .map_err(|e| e.to_string())?;
-
-            Box::new(AudioSparkleEffect::new(sampler, sensitivity, base_density))
-        }
-        "audio_sparkle_rainbow" => {
-            let sensitivity: f32 = preset_config
-                .parameters
-                .get("sensitivity")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            
-            let base_density: f32 = preset_config
-                .parameters
-                .get("base_density")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(0.0);
-
-            let rainbow_speed: f32 = preset_config
-                .parameters
-                .get("rainbow_speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-
-            let sampler = crate::audio_sampler::AudioSampler::new()
-                .map_err(|e| e.to_string())?;
-
-            Box::new(AudioSparkleRainbowEffect::new(sampler, sensitivity, base_density, rainbow_speed))
-        }
-        "audio_sparkle_media" => {
-            let sensitivity: f32 = preset_config
-                .parameters
-                .get("sensitivity")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            
-            let base_density: f32 = preset_config
-                .parameters
-                .get("base_density")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(0.0);
-
-            let sampler_audio = crate::audio_sampler::AudioSampler::new()
-                .map_err(|e| e.to_string())?;
-            
-            let mut sampler_media = crate::presets::ambient::DxgiScreenSampler::new()
-                .map_err(|e| e.to_string())?;
-            
-            sampler_media.set_sample_top_fraction(0.15);
-            sampler_media.set_sample_horizontal_region(0.0, 1.0);
-
-            Box::new(AudioSparkleMediaEffect::new(sampler_audio, sampler_media, sensitivity, base_density))
-        }
-        "audio_ripple" => {
-            let sensitivity: f32 = preset_config
-                .parameters
-                .get("sensitivity")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            let speed: f32 = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(40.0);
-            let width: f32 = preset_config
-                .parameters
-                .get("width")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(3.0);
-            let lifetime: f32 = preset_config
-                .parameters
-                .get("lifetime")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(0.8);
-
-            let sampler = crate::audio_sampler::AudioSampler::new()
-                .map_err(|e| e.to_string())?;
-
-            Box::new(AudioRippleEffect::new(sampler, sensitivity, speed, width, lifetime))
-        }
-        "rainbow_ripple" => {
-            let speed: f32 = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(40.0);
-            
-            let width: f32 = preset_config
-                .parameters
-                .get("width")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(3.0);
-
-            let lifetime: f32 = preset_config
-                .parameters
-                .get("lifetime")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(0.8);
-
-            Box::new(RainbowRippleEffect::new(speed, width, lifetime))
-        }
-        "nebula" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            Box::new(crate::presets::nebula::NebulaEffect::new(speed))
-        }
-        "chromaticbreath" => {
-            let speed = preset_config
-                .parameters
-                .get("speed")
-                .and_then(|v| match v {
-                    ParameterValue::Float(f) => Some(*f),
-                    _ => None,
-                })
-                .unwrap_or(1.0);
-            Box::new(crate::presets::chromaticBreath::ChromaticBreathEffect::new(
-                speed,
-            ))
-        }
-        _ => return Err(format!("Unknown preset: {}", preset_config.name)),
-    };
-
-    // Start the new effect
     {
         let mut current_effect = state.current_effect.lock().unwrap();
         *current_effect = Some(new_effect);
     }
 
-    Ok(format!(
-        "Preset '{}' loaded successfully",
-        preset_config.name
-    ))
+    Ok(format!("Preset '{}' loaded successfully", name_copy))
 }
+

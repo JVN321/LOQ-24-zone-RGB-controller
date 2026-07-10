@@ -20,6 +20,7 @@ pub enum ParameterType {
     Float,
     #[serde(rename = "Color")]
     Color { r: u8, g: u8, b: u8 },
+    String,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -41,24 +42,44 @@ pub struct PresetConfig {
 pub enum ParameterValue {
     Float(f32),
     Color { r: u8, g: u8, b: u8 },
+    String(String),
+}
+
+impl ParameterValue {
+    pub fn from_json(v: &serde_json::Value) -> Option<Self> {
+        match v {
+            serde_json::Value::Number(n) => Some(ParameterValue::Float(n.as_f64()? as f32)),
+            serde_json::Value::String(s) => Some(ParameterValue::String(s.clone())),
+            serde_json::Value::Object(map) => {
+                let r = map.get("r")?.as_u64()? as u8;
+                let g = map.get("g")?.as_u64()? as u8;
+                let b = map.get("b")?.as_u64()? as u8;
+                Some(ParameterValue::Color { r, g, b })
+            }
+            _ => None,
+        }
+    }
 }
 
 pub fn get_available_presets() -> Vec<PresetMetadata> {
+    let mut static_colors_params = Vec::new();
+    for i in 1..=24 {
+        static_colors_params.push(ParameterConfig {
+            name: format!("color{}", i),
+            label: format!("Zone {}", i),
+            param_type: ParameterType::Color { r: 255, g: 255, b: 255 },
+            min: 0.0,
+            max: 0.0,
+            default: 0.0,
+            step: 0.0,
+        });
+    }
+
     vec![PresetMetadata {
             name: "staticColor".to_string(),
             display_name: "Static Color".to_string(),
-            description: "Set a static color from 16,581,375 gradients of color".to_string(),
-            parameters: vec![
-                ParameterConfig {
-                    name: "color".to_string(),
-                    label: "Color".to_string(),
-                    param_type: ParameterType::Color { r: 255, g: 255, b: 200},
-                    min: 0.1,
-                    max: 3.0,
-                    default: 0.5,
-                    step: 0.1,
-                },
-            ],
+            description: "Customize the color of each keyboard zone separately".to_string(),
+            parameters: static_colors_params,
         },
         PresetMetadata {
             name: "thermalStatus".to_string(),
@@ -89,9 +110,9 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
                     name: "smoothing".to_string(),
                     label: "Smoothing".to_string(),
                     param_type: ParameterType::Float,
-                    min: 0.0,
-                    max: 10.0,
-                    default: 5.0,
+                    min: 0.1,
+                    max: 20.0,
+                    default: 3.0,
                     step: 0.1,
                 },
                 // Sampling region controls (fractions where 0.0 = top/left, 1.0 = bottom/right)
@@ -361,7 +382,7 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
         PresetMetadata {
             name: "audio_sparkle".to_string(),
             display_name: "Audio Sparkle".to_string(),
-            description: "Keyboard lights sparkle in sync with system audio.".to_string(),
+            description: "Keyboard lights sparkle in sync with audio source.".to_string(),
             parameters: vec![
                 ParameterConfig {
                     name: "sensitivity".to_string(),
@@ -378,15 +399,24 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
                     param_type: ParameterType::Float,
                     min: 0.0,
                     max: 0.5,
-                    default: 0.0,
+                    default: 0.05,
                     step: 0.01,
+                },
+                ParameterConfig {
+                    name: "audio_source".to_string(),
+                    label: "Audio Source (0=Sys, 1=Mic, 2=Both)".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.0,
+                    max: 2.0,
+                    default: 0.0,
+                    step: 1.0,
                 },
             ],
         },
         PresetMetadata {
             name: "audio_sparkle_rainbow".to_string(),
             display_name: "Audio Sparkle Rainbow".to_string(),
-            description: "Rainbow sparkles that react to system audio.".to_string(),
+            description: "Rainbow sparkles that react to audio source.".to_string(),
             parameters: vec![
                 ParameterConfig {
                     name: "sensitivity".to_string(),
@@ -415,12 +445,21 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
                     default: 1.0,
                     step: 0.1,
                 },
+                ParameterConfig {
+                    name: "audio_source".to_string(),
+                    label: "Audio Source (0=Sys, 1=Mic, 2=Both)".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.0,
+                    max: 2.0,
+                    default: 0.0,
+                    step: 1.0,
+                },
             ],
         },
         PresetMetadata {
             name: "audio_sparkle_media".to_string(),
             display_name: "Audio Sparkle Media".to_string(),
-            description: "Sparkles that match screen colors and react to audio.".to_string(),
+            description: "Sparkles that match screen colors and react to audio source.".to_string(),
             parameters: vec![
                 ParameterConfig {
                     name: "sensitivity".to_string(),
@@ -439,6 +478,15 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
                     max: 0.5,
                     default: 0.0,
                     step: 0.01,
+                },
+                ParameterConfig {
+                    name: "audio_source".to_string(),
+                    label: "Audio Source (0=Sys, 1=Mic, 2=Both)".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.0,
+                    max: 2.0,
+                    default: 0.0,
+                    step: 1.0,
                 },
             ],
         },
@@ -482,6 +530,15 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
                     max: 2.0,
                     default: 0.8,
                     step: 0.1,
+                },
+                ParameterConfig {
+                    name: "audio_source".to_string(),
+                    label: "Audio Source (0=Sys, 1=Mic, 2=Both)".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.0,
+                    max: 2.0,
+                    default: 0.0,
+                    step: 1.0,
                 },
             ],
         },
@@ -552,6 +609,22 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
                 },
             ],
         },
+        PresetMetadata {
+            name: "layered".to_string(),
+            display_name: "Layered Effects".to_string(),
+            description: "Layer multiple effects on top of each other with priority and opacity/intensity".to_string(),
+            parameters: vec![
+                ParameterConfig {
+                    name: "config".to_string(),
+                    label: "Config JSON".to_string(),
+                    param_type: ParameterType::String,
+                    min: 0.0,
+                    max: 0.0,
+                    default: 0.0,
+                    step: 0.0,
+                }
+            ],
+        },
     ]
 }
 
@@ -583,3 +656,4 @@ pub mod audio_sparkle_rainbow;
 pub mod audio_sparkle_media;
 pub mod rainbow_ripple;
 pub mod audio_ripple;
+pub mod layered;

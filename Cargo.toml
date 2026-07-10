@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "rust-backend",
+    "rgb-server",
+]
+resolver = "2"

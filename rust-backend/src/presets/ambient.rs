@@ -11,8 +11,6 @@ const AMBIENT_HEIGHT: usize = 12;
 /// Boost saturation so colors stay rich instead of washing to white (1.0 = no change).
 const SATURATION_BOOST: f32 = 2.8;
 
-const AMBIENT_TARGET_FPS: f32 = 45.0;
-
 //
 // ================= RGB FLOAT =================
 //
@@ -33,21 +31,15 @@ impl RgbF {
         Self { r: self.r + o.r, g: self.g + o.g, b: self.b + o.b }
     }
 
+    pub fn sub(self, o: Self) -> Self {
+        Self { r: self.r - o.r, g: self.g - o.g, b: self.b - o.b }
+    }
+
     pub fn scale(self, s: f32) -> Self {
         Self { r: self.r * s, g: self.g * s, b: self.b * s }
     }
 
-    fn lerp(self, t: Self, a: f32) -> Self {
-        Self {
-            r: self.r + (t.r - self.r) * a,
-            g: self.g + (t.g - self.g) * a,
-            b: self.b + (t.b - self.b) * a,
-        }
-    }
 
-    fn luminance(self) -> f32 {
-        0.2126 * self.r + 0.7152 * self.g + 0.0722 * self.b
-    }
 
     pub fn to_color(self) -> Color {
         Color::new(
@@ -58,14 +50,66 @@ impl RgbF {
     }
 
     /// Boost saturation: pull color away from gray so it stays rich, not white.
-    fn saturate(self, amount: f32) -> Self {
-        let l = self.luminance();
-        let gray = RgbF { r: l, g: l, b: l };
-        let s = gray.add((self.add(gray.scale(-1.0))).scale(amount));
+    fn saturate(self, _amount: f32) -> Self {
+        let r = self.r;
+        let g = self.g;
+        let b = self.b;
+
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        let delta = max - min;
+
+        let h = if delta == 0.0 {
+            0.0
+        } else if max == r {
+            60.0 * (((g - b) / delta) % 6.0)
+        } else if max == g {
+            60.0 * (((b - r) / delta) + 2.0)
+        } else {
+            60.0 * (((r - g) / delta) + 4.0)
+        };
+
+        let h = if h < 0.0 { h + 360.0 } else { h };
+        let s = if max == 0.0 { 0.0 } else { delta / max };
+        let v = max;
+
+        // Apply a strong non-linear saturation curve so even slight hints of color become very vibrant.
+        let s_boosted = if s > 0.005 {
+            (s.powf(0.25) * 1.95).min(1.0)
+        } else {
+            s
+        };
+
+        // Boost Value (brightness) slightly for dimmer colors to pop
+        let v_boosted = if v > 0.01 {
+            (v.powf(0.75) * 1.2).min(1.0)
+        } else {
+            v
+        };
+
+        // Convert back to RGB
+        let c = v_boosted * s_boosted;
+        let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+        let m = v_boosted - c;
+
+        let (r1, g1, b1) = if h < 60.0 {
+            (c, x, 0.0)
+        } else if h < 120.0 {
+            (x, c, 0.0)
+        } else if h < 180.0 {
+            (0.0, c, x)
+        } else if h < 240.0 {
+            (0.0, x, c)
+        } else if h < 300.0 {
+            (x, 0.0, c)
+        } else {
+            (c, 0.0, x)
+        };
+
         Self {
-            r: s.r.clamp(0.0, 1.0),
-            g: s.g.clamp(0.0, 1.0),
-            b: s.b.clamp(0.0, 1.0),
+            r: (r1 + m).clamp(0.0, 1.0),
+            g: (g1 + m).clamp(0.0, 1.0),
+            b: (b1 + m).clamp(0.0, 1.0),
         }
     }
 
@@ -306,6 +350,90 @@ mod dxgi {
 #[cfg(target_os = "windows")]
 pub use dxgi::DxgiScreenSampler;
 
+#[cfg(not(target_os = "windows"))]
+mod linux_sampler {
+    use super::*;
+
+    pub struct LinuxScreenSampler {
+        monitor: Option<xcap::Monitor>,
+        sample_top_frac: f32,
+        sample_left_frac: f32,
+        sample_width_frac: f32,
+    }
+
+    impl LinuxScreenSampler {
+        pub fn new() -> anyhow::Result<Self> {
+            let monitors = xcap::Monitor::all().map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            let monitor = monitors.into_iter().next();
+            Ok(Self {
+                monitor,
+                sample_top_frac: 0.0,
+                sample_left_frac: 0.0,
+                sample_width_frac: 1.0,
+            })
+        }
+
+        pub fn set_sample_top_fraction(&mut self, f: f32) {
+            self.sample_top_frac = f.clamp(0.0, 1.0);
+        }
+
+        pub fn set_sample_horizontal_region(&mut self, left_frac: f32, width_frac: f32) {
+            let left = left_frac.clamp(0.0, 1.0);
+            let width = width_frac.clamp(0.0, 1.0);
+            self.sample_left_frac = left;
+            self.sample_width_frac = if left + width > 1.0 { 1.0 - left } else { width };
+        }
+    }
+
+    impl ScreenSampler for LinuxScreenSampler {
+        fn sample(&mut self, out: &mut [[RgbF; AMBIENT_HEIGHT]; AMBIENT_WIDTH]) -> bool {
+            let monitor = match &self.monitor {
+                Some(m) => m,
+                None => return false,
+            };
+            
+            let img = match monitor.capture_image() {
+                Ok(i) => i,
+                Err(e) => {
+                    eprintln!("⚠️  Ambient capture failed: {:?}", e);
+                    return false;
+                }
+            };
+            
+            let width = img.width() as usize;
+            let height = img.height() as usize;
+            if width == 0 || height == 0 {
+                return false;
+            }
+            
+            let y_start = (height as f32 * self.sample_top_frac) as usize;
+            let region_left = (width as f32 * self.sample_left_frac) as usize;
+            let region_width = ((width as f32) * self.sample_width_frac).max(1.0) as usize;
+            
+            for x in 0..AMBIENT_WIDTH {
+                for y in 0..AMBIENT_HEIGHT {
+                    let sx_rel = x * region_width / AMBIENT_WIDTH;
+                    let sx = (region_left + sx_rel).min(width - 1);
+                    let sy = y_start + y * (height - y_start) / AMBIENT_HEIGHT;
+                    let sy = sy.min(height - 1);
+                    
+                    let pixel = img.get_pixel(sx as u32, sy as u32);
+                    out[x][y] = RgbF {
+                        r: pixel[0] as f32 / 255.0,
+                        g: pixel[1] as f32 / 255.0,
+                        b: pixel[2] as f32 / 255.0,
+                    };
+                }
+            }
+            
+            true
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+pub use linux_sampler::LinuxScreenSampler as DxgiScreenSampler;
+
 //
 // ================= AMBIENT EFFECT =================
 //
@@ -315,66 +443,83 @@ pub use dxgi::DxgiScreenSampler;
 // The user's brightness slider still works as a multiplier (applied in flush_buffered).
 //
 
-pub struct AmbientEffect<S: ScreenSampler> {
-    sampler: S,
+pub struct AmbientEffect<S: ScreenSampler + 'static> {
+    sampler: std::sync::Arc<std::sync::Mutex<S>>,
     smoothing: f32,
     last: [RgbF; AMBIENT_WIDTH],
-    last_sample_time: f32,
-    last_valid_sample: [[RgbF; AMBIENT_HEIGHT]; AMBIENT_WIDTH],
+    shared_buffer: std::sync::Arc<std::sync::Mutex<[[RgbF; AMBIENT_HEIGHT]; AMBIENT_WIDTH]>>,
+    running_flag: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    thread_handle: Option<std::thread::JoinHandle<()>>,
 }
 
-impl<S: ScreenSampler> AmbientEffect<S> {
+impl<S: ScreenSampler + 'static> AmbientEffect<S> {
     pub fn new(sampler: S, smoothing: f32) -> Self {
         Self {
-            sampler,
+            sampler: std::sync::Arc::new(std::sync::Mutex::new(sampler)),
             smoothing,
             last: [RgbF::black(); AMBIENT_WIDTH],
-            last_sample_time: -1.0,
-            last_valid_sample: [[RgbF::black(); AMBIENT_HEIGHT]; AMBIENT_WIDTH],
+            shared_buffer: std::sync::Arc::new(std::sync::Mutex::new([[RgbF::black(); AMBIENT_HEIGHT]; AMBIENT_WIDTH])),
+            running_flag: None,
+            thread_handle: None,
         }
     }
 }
 
-impl<S: ScreenSampler> crate::effects::Effect for AmbientEffect<S> {
+impl<S: ScreenSampler + 'static> crate::effects::Effect for AmbientEffect<S> {
     fn start(&mut self) {
         self.last = [RgbF::black(); AMBIENT_WIDTH];
-        self.last_sample_time = -1.0;
-        self.last_valid_sample = [[RgbF::black(); AMBIENT_HEIGHT]; AMBIENT_WIDTH];
+        
+        let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        self.running_flag = Some(running.clone());
+        let buffer = self.shared_buffer.clone();
+        let sampler = self.sampler.clone();
+
+        let handle = std::thread::spawn(move || {
+            let mut local_buf = [[RgbF::black(); AMBIENT_HEIGHT]; AMBIENT_WIDTH];
+            while running.load(std::sync::atomic::Ordering::Relaxed) {
+                let got_frame = if let Ok(mut sampler_guard) = sampler.lock() {
+                    sampler_guard.sample(&mut local_buf)
+                } else {
+                    false
+                };
+                if got_frame {
+                    if let Ok(mut guard) = buffer.lock() {
+                        *guard = local_buf;
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+        });
+        self.thread_handle = Some(handle);
     }
 
-    fn update(&mut self, controller: &mut LedController, time: f32, delta: f32) {
-        let interval = 1.0 / AMBIENT_TARGET_FPS;
-        if self.last_sample_time >= 0.0 && time - self.last_sample_time < interval {
-            return;
-        }
-        self.last_sample_time = time;
-
-        let mut buffer = [[RgbF::black(); AMBIENT_HEIGHT]; AMBIENT_WIDTH];
-
-        let got_new_frame = self.sampler.sample(&mut buffer);
-
-        if !got_new_frame {
-            buffer = self.last_valid_sample;
+    fn update(&mut self, controller: &mut LedController, _time: f32, delta: f32) {
+        let buffer = if let Ok(guard) = self.shared_buffer.lock() {
+            *guard
         } else {
-            self.last_valid_sample = buffer;
-        }
+            [[RgbF::black(); AMBIENT_HEIGHT]; AMBIENT_WIDTH]
+        };
 
         for x in 0..AMBIENT_WIDTH {
-            // Average all sample rows to get the zone color (area downsampling)
+            // Average all sample rows to get the zone color
             let mut sum = RgbF::black();
             for y in 0..AMBIENT_HEIGHT {
                 sum = sum.add(buffer[x][y]);
             }
             let avg = sum.scale(1.0 / AMBIENT_HEIGHT as f32);
 
-            // Saturate for richer colors (like photon_rs::saturate_hsv in the reference)
+            // Saturate for richer colors
             let target = avg.saturate(SATURATION_BOOST);
 
-            // Light smoothing (controlled by the smoothing parameter).
-            // smoothing=0 → instant (like the reference code), higher = smoother transitions.
             let color = if self.smoothing > 0.01 {
-                let t = 1.0 - (-self.smoothing * delta * 4.0).exp();
-                let smoothed = self.last[x].lerp(target, t);
+                let diff = target.sub(self.last[x]);
+                let len = (diff.r * diff.r + diff.g * diff.g + diff.b * diff.b).sqrt();
+                let smoothed = if len > 0.0001 {
+                    let step = (self.smoothing * delta).min(len);
+                    self.last[x].add(diff.scale(step / len))
+                } else {
+                    target
+                };
                 self.last[x] = smoothed;
                 smoothed
             } else {
@@ -388,7 +533,28 @@ impl<S: ScreenSampler> crate::effects::Effect for AmbientEffect<S> {
         let _ = controller.flush_buffered();
     }
 
+    fn stop(&mut self, controller: &mut LedController) {
+        if let Some(running) = self.running_flag.take() {
+            running.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+        if let Some(handle) = self.thread_handle.take() {
+            let _ = handle.join();
+        }
+        let _ = controller.clear();
+    }
+
     fn name(&self) -> &str {
         "Ambient Screen"
+    }
+}
+
+impl<S: ScreenSampler + 'static> Drop for AmbientEffect<S> {
+    fn drop(&mut self) {
+        if let Some(running) = self.running_flag.take() {
+            running.store(false, std::sync::atomic::Ordering::Relaxed);
+        }
+        if let Some(handle) = self.thread_handle.take() {
+            let _ = handle.join();
+        }
     }
 }

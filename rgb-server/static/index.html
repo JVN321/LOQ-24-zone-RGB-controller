@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LOQ RGB Controller</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #030208;
+      --surface: rgba(13, 11, 24, 0.7);
+      --surface2: rgba(22, 19, 39, 0.85);
+      --surface-accent: rgba(139, 92, 246, 0.08);
+      --border: rgba(255, 255, 255, 0.06);
+      --border-focus: rgba(139, 92, 246, 0.4);
+      --accent: #8b5cf6;
+      --accent-gradient: linear-gradient(135deg, #8b5cf6, #d946ef);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --success: #10b981;
+      --error: #ef4444;
+      --radius: 12px;
+      --shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.6);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: radial-gradient(circle at top right, #1a103c, #030208);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.16); }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(8, 6, 15, 0.8);
+      backdrop-filter: blur(20px);
+      z-index: 10;
+      flex-shrink: 0;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 34px; height: 34px;
+      background: var(--accent-gradient);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 20px rgba(139, 92, 246, 0.35);
+    }
+
+    .logo-text h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.5px; }
+    .logo-text p { font-size: 11px; color: var(--text-muted); }
+
+    .status-badge {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 11px; font-weight: 500;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+      backdrop-filter: blur(8px);
+    }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--error);
+      box-shadow: 0 0 8px var(--error);
+    }
+    .status-dot.connected { background: var(--success); box-shadow: 0 0 10px var(--success); }
+
+    /* Main layout */
+    main {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      flex: 1;
+      min-height: 0; /* Important to let inner elements scroll correctly */
+      overflow: hidden;
+    }
+
+    /* Sidebar */
+    aside {
+      background: var(--surface);
+      backdrop-filter: blur(30px);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .sidebar-section {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .sidebar-label {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.2px; text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .brightness-row {
+      display: flex; align-items: center; gap: 12px;
+    }
+
+    .brightness-row span { font-size: 16px; }
+
+    input[type=range] {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 4px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+      cursor: pointer;
+      transition: transform 0.15s, background-color 0.15s;
+    }
+
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.25);
+      background: #a78bfa;
+    }
+
+    .brightness-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; color: var(--accent);
+      min-width: 36px; text-align: right;
+    }
+
+    .preset-search-container {
+      padding: 14px 16px 8px 16px;
+      flex-shrink: 0;
+    }
+
+    .preset-search {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 13px;
+      outline: none;
+      font-family: inherit;
+      transition: all 0.2s;
+    }
+
+    .preset-search:focus {
+      border-color: var(--accent-gradient);
+      background: rgba(255, 255, 255, 0.05);
+      box-shadow: 0 0 12px rgba(139, 92, 246, 0.15);
+    }
+
+    .preset-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 8px 16px 8px;
+    }
+
+    .preset-item {
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex; flex-direction: column; gap: 4px;
+      border: 1px solid transparent;
+      margin-bottom: 6px;
+    }
+
+    .preset-item:hover {
+      background: rgba(255, 255, 255, 0.02);
+      border-color: rgba(255, 255, 255, 0.03);
+    }
+
+    .preset-item.active {
+      background: var(--surface-accent);
+      border-color: rgba(139, 92, 246, 0.25);
+      box-shadow: inset 0 0 8px rgba(139, 92, 246, 0.05);
+    }
+
+    .preset-item.active .preset-name {
+      color: #a78bfa;
+    }
+
+    .preset-name { font-size: 13px; font-weight: 600; color: var(--text); transition: color 0.2s; }
+    .preset-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+
+    /* Content Area */
+    .content {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.15);
+    }
+
+    /* Live Preview Section */
+    .keyboard-panel {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.01);
+      flex-shrink: 0;
+    }
+
+    .panel-title {
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 1.2px; text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .keyboard-viz {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      background: #050409;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      box-shadow: inset 0 4px 20px rgba(0, 0, 0, 0.9);
+    }
+
+    .zone-bar {
+      flex: 1;
+      height: 38px;
+      border-radius: 5px;
+      background: #0e0d16;
+      transition: background 0.08s ease;
+      position: relative;
+      cursor: default;
+      box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.05);
+    }
+
+    .zone-bar::after {
+      content: attr(data-zone);
+      position: absolute;
+      bottom: -16px;
+      left: 50%; transform: translateX(-50%);
+      font-size: 8px;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Parameters Panel */
+    .params-panel {
+      padding: 20px 24px;
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .preset-header {
+      margin-bottom: 20px;
+      flex-shrink: 0;
+    }
+
+    .preset-header h2 { font-size: 18px; font-weight: 600; margin-bottom: 4px; color: var(--text); }
+    .preset-header p { font-size: 12px; color: var(--text-muted); }
+
+    .params-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+      align-content: start;
+      margin-bottom: 20px;
+    }
+
+    /* Custom Forms & Cards */
+    .param-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .param-card:hover { border-color: rgba(139, 92, 246, 0.2); }
+
+    .param-label {
+      font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .param-slider-row {
+      display: flex; align-items: center; gap: 12px;
+    }
+
+    .param-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; color: var(--accent);
+      min-width: 38px; text-align: right;
+    }
+
+    .color-row {
+      display: flex; align-items: center; gap: 12px;
+    }
+
+    input[type=color] {
+      width: 44px; height: 32px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: none; cursor: pointer;
+      padding: 0;
+    }
+
+    /* Select Dropdowns */
+    .param-select {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 13px;
+      outline: none;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .param-select:focus {
+      border-color: var(--accent);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    /* Interactive 24-Zone Palette Editor */
+    .zone-editor-container {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .zone-editor-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 6px;
+    }
+
+    .zone-editor-cell {
+      aspect-ratio: 1.2;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: #11111a;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.7);
+      user-select: none;
+    }
+
+    .zone-editor-cell:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .zone-editor-cell.selected {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+      box-shadow: 0 0 12px var(--accent);
+      z-index: 2;
+    }
+
+    .zone-editor-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      padding-top: 12px;
+    }
+
+    .zone-editor-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-sm:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .gradient-builder {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      margin-left: auto;
+    }
+
+    /* Layer Editor Custom UI */
+    .layers-container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .add-layer-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .layer-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+
+    .layer-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .layer-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .layer-opacity-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .layer-settings-toggle {
+      font-size: 11px;
+      color: var(--accent);
+      cursor: pointer;
+      margin-left: auto;
+      text-decoration: underline;
+      background: none;
+      border: none;
+      font-family: inherit;
+    }
+
+    .layer-sub-params {
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      padding-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 10px;
+    }
+
+    .layer-action-btn {
+      width: 26px; height: 26px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.15s;
+    }
+
+    .layer-action-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .apply-bar {
+      margin-top: auto;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      flex-shrink: 0;
+    }
+
+    .apply-btn {
+      padding: 12px 28px;
+      border-radius: var(--radius);
+      border: none;
+      background: var(--accent-gradient);
+      color: white;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s;
+      box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+    }
+
+    .apply-btn:hover {
+      opacity: 0.95;
+      transform: translateY(-1.5px);
+      box-shadow: 0 6px 24px rgba(139, 92, 246, 0.45);
+    }
+
+    .apply-btn:active { transform: translateY(0.5px); }
+
+    .reset-btn {
+      padding: 12px 20px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+      font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .reset-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      transform: translateY(-1px);
+    }
+
+    .reset-btn:active {
+      transform: translateY(0.5px);
+    }
+
+    .no-params {
+      color: var(--text-muted);
+      font-size: 13px;
+      padding: 12px 0;
+    }
+
+    /* Toast - Placed top-center, sliding down */
+    #toast {
+      position: fixed;
+      top: 24px;
+      left: 50%;
+      transform: translate(-50%, -100px);
+      background: #0b0a12;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 20px;
+      font-size: 13px;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 999;
+    }
+
+    #toast.show { transform: translate(-50%, 0); opacity: 1; }
+    #toast.ok { border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.05); }
+    #toast.err { border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.05); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">✨</div>
+    <div class="logo-text">
+      <h1>LOQ RGB Controller</h1>
+      <p>Lenovo LOQ 24-Zone Control Center</p>
+    </div>
+  </div>
+  <div class="status-badge" id="statusBadge">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Connecting…</span>
+  </div>
+</header>
+
+<main>
+  <!-- Sidebar -->
+  <aside>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Brightness</div>
+      <div class="brightness-row">
+        <span>🌑</span>
+        <input type="range" id="brightnessSlider" min="0" max="100" value="100">
+        <span>☀️</span>
+        <div class="brightness-val" id="brightnessVal">100%</div>
+      </div>
+    </div>
+
+    <div class="preset-search-container">
+      <div class="sidebar-label">Search Effects</div>
+      <input class="preset-search" id="presetSearch" placeholder="Filter presets…" autocomplete="off">
+    </div>
+
+    <div class="preset-list" id="presetList">
+      <div style="color:var(--text-muted); font-size:12px; padding:12px;">Loading presets…</div>
+    </div>
+  </aside>
+
+  <!-- Content -->
+  <div class="content">
+    <div class="keyboard-panel">
+      <div class="panel-title">Live Device Preview (24 Zones)</div>
+      <div class="keyboard-viz" id="keyboardViz">
+        <!-- JS generated zones -->
+      </div>
+    </div>
+
+    <div class="params-panel" id="paramsPanel">
+      <div class="preset-header">
+        <h2 id="paramPresetName">Select an effect</h2>
+        <p id="paramPresetDesc">Choose a lighting layout from the list on the left.</p>
+      </div>
+      <div id="customParamsArea" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+        <div class="params-grid" id="paramsGrid"></div>
+      </div>
+      <div class="apply-bar" id="applyBar" style="display: none;">
+        <button class="reset-btn" id="resetBtn">Reset Defaults ↺</button>
+        <button class="apply-btn" id="applyBtn" style="flex: 1;">Apply Effect ✦</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let presets = [];
+let selectedPreset = null;
+let paramValues = {};
+let ws = null;
+let brightnessDebounce = null;
+
+// Static Editor State
+let staticColors = Array(24).fill({ r: 255, g: 255, b: 255 });
+let selectedStaticZones = new Set();
+let isMouseDown = false;
+
+// Layered Editor State
+let layeredConfig = [];
+let openLayerSettingsIndex = null;
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  buildKeyboard();
+  await loadPresets();
+  await refreshStatus();
+  connectWS();
+  setupBrightness();
+
+  document.addEventListener('mouseup', () => { isMouseDown = false; });
+});
+
+// ─── Keyboard viz ────────────────────────────────────────────────────────────
+function buildKeyboard() {
+  const viz = document.getElementById('keyboardViz');
+  viz.innerHTML = '';
+  for (let i = 0; i < 24; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'zone-bar';
+    bar.dataset.zone = i;
+    bar.title = `Zone ${i}`;
+    viz.appendChild(bar);
+  }
+}
+
+function updateFrame(zones) {
+  const bars = document.querySelectorAll('.zone-bar');
+  zones.forEach(([r, g, b], i) => {
+    if (bars[i]) {
+      bars[i].style.background = `rgb(${r},${g},${b})`;
+    }
+  });
+}
+
+// ─── WebSocket connection ─────────────────────────────────────────────────────
+function connectWS() {
+  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${protocol}://${location.host}/ws`);
+  ws.onmessage = e => {
+    try { updateFrame(JSON.parse(e.data)); } catch(_) {}
+  };
+  ws.onclose = () => setTimeout(connectWS, 2000);
+}
+
+// ─── API Client ───────────────────────────────────────────────────────────────
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: body ? {'Content-Type': 'application/json'} : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return res.json();
+}
+
+// ─── Refresh Status ───────────────────────────────────────────────────────────
+async function refreshStatus() {
+  try {
+    const s = await api('GET', '/api/status');
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    if (s.connected) {
+      dot.classList.add('connected');
+      txt.textContent = 'HID Connected';
+    } else {
+      dot.classList.remove('connected');
+      txt.textContent = 'No Device';
+    }
+    document.getElementById('brightnessSlider').value = Math.round(s.brightness * 100);
+    document.getElementById('brightnessVal').textContent = Math.round(s.brightness * 100) + '%';
+    if (s.preset) highlightActive(s.preset);
+  } catch(e) {}
+}
+
+// ─── Load Presets ─────────────────────────────────────────────────────────────
+async function loadPresets() {
+  presets = await api('GET', '/api/presets');
+  renderPresetList(presets);
+}
+
+function renderPresetList(list) {
+  const el = document.getElementById('presetList');
+  el.innerHTML = '';
+  list.forEach(p => {
+    const item = document.createElement('div');
+    item.className = 'preset-item';
+    item.dataset.name = p.name;
+    item.innerHTML = `
+      <div class="preset-name">${p.display_name}</div>
+      <div class="preset-desc">${p.description}</div>
+    `;
+    item.addEventListener('click', () => selectPreset(p));
+    el.appendChild(item);
+  });
+}
+
+document.getElementById('presetSearch').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  const filtered = presets.filter(p =>
+    p.display_name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
+  );
+  renderPresetList(filtered);
+  if (selectedPreset) highlightActive(selectedPreset.name);
+});
+
+function highlightActive(name) {
+  document.querySelectorAll('.preset-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.name === name);
+  });
+}
+
+function selectPreset(preset) {
+  selectedPreset = preset;
+  paramValues = {};
+  highlightActive(preset.name);
+  renderParams(preset);
+}
+
+// ─── Parameter Panel Rendering ───────────────────────────────────────────────
+function renderParams(preset) {
+  document.getElementById('paramPresetName').textContent = preset.display_name;
+  document.getElementById('paramPresetDesc').textContent = preset.description;
+
+  const container = document.getElementById('customParamsArea');
+  container.innerHTML = '';
+  document.getElementById('applyBar').style.display = 'flex';
+
+  if (preset.name === 'staticColor') {
+    renderStaticColorEditor(container);
+    return;
+  }
+
+  if (preset.name === 'layered') {
+    renderLayeredEditor(container);
+    return;
+  }
+
+  // Standard params list
+  const grid = document.createElement('div');
+  grid.className = 'params-grid';
+  container.appendChild(grid);
+
+  if (!preset.parameters || preset.parameters.length === 0) {
+    grid.innerHTML = '<div class="no-params">No configurable parameters — click Apply to activate.</div>';
+    applyPreset();
+    return;
+  }
+
+  preset.parameters.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'param-card';
+
+    // Check if it is the audio_source selector
+    if (p.name === 'audio_source') {
+      paramValues[p.name] = p.default;
+      card.innerHTML = `
+        <div class="param-label">${p.label}</div>
+        <select class="param-select" id="param-${p.name}">
+          <option value="0">System Audio (Loopback monitor)</option>
+          <option value="1">Microphone (Capture input)</option>
+          <option value="2">Both (System + Mic mix)</option>
+        </select>
+      `;
+      const select = card.querySelector('select');
+      select.value = Math.round(p.default).toString();
+      select.addEventListener('change', e => {
+        paramValues[p.name] = parseFloat(e.target.value);
+      });
+    } else if (p.param_type.type === 'Color') {
+      const def = p.param_type;
+      const hex = rgbToHex(def.r, def.g, def.b);
+      paramValues[p.name] = { r: def.r, g: def.g, b: def.b };
+
+      card.innerHTML = `
+        <div class="param-label">${p.label}</div>
+        <div class="color-row">
+          <input type="color" id="param-${p.name}" value="${hex}">
+          <span style="font-size:12px; color:var(--text-muted)">Click to select color</span>
+        </div>
+      `;
+      card.querySelector('input').addEventListener('input', e => {
+        const [r, g, b] = hexToRgb(e.target.value);
+        paramValues[p.name] = { r, g, b };
+      });
+    } else {
+      // Standard Float Slider
+      paramValues[p.name] = p.default;
+      card.innerHTML = `
+        <div class="param-label">${p.label}</div>
+        <div class="param-slider-row">
+          <input type="range" id="param-${p.name}"
+            min="${p.min}" max="${p.max}" step="${p.step}" value="${p.default}">
+          <div class="param-val" id="pval-${p.name}">${p.default}</div>
+        </div>
+      `;
+      const slider = card.querySelector('input');
+      const valEl = card.querySelector('.param-val');
+      slider.addEventListener('input', e => {
+        paramValues[p.name] = parseFloat(e.target.value);
+        valEl.textContent = parseFloat(e.target.value).toFixed(
+          p.step < 0.1 ? 2 : p.step < 1 ? 1 : 0
+        );
+      });
+    }
+    grid.appendChild(card);
+  });
+}
+
+// ─── 24-Zone Static Color Palette Editor ──────────────────────────────────────
+function renderStaticColorEditor(container) {
+  selectedStaticZones.clear();
+
+  const editorCard = document.createElement('div');
+  editorCard.className = 'zone-editor-container';
+
+  // Build grid representation of the 24 zones
+  const grid = document.createElement('div');
+  grid.className = 'zone-editor-grid';
+  
+  for (let i = 0; i < 24; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'zone-editor-cell';
+    cell.dataset.index = i;
+    cell.textContent = i + 1;
+    const c = staticColors[i];
+    cell.style.background = `rgb(${c.r}, ${c.g}, ${c.b})`;
+    
+    // Drag-to-select support
+    cell.addEventListener('mousedown', (e) => {
+      isMouseDown = true;
+      e.preventDefault();
+      toggleZoneSelection(i, cell);
+    });
+    cell.addEventListener('mouseenter', () => {
+      if (isMouseDown) {
+        toggleZoneSelection(i, cell);
+      }
+    });
+    grid.appendChild(cell);
+  }
+  
+  editorCard.appendChild(grid);
+
+  // Controls row
+  const controls = document.createElement('div');
+  controls.className = 'zone-editor-controls';
+  controls.innerHTML = `
+    <div class="zone-editor-actions">
+      <button class="btn-sm" id="btnStaticSelectAll">Select All</button>
+      <button class="btn-sm" id="btnStaticInvert">Invert</button>
+      <button class="btn-sm" id="btnStaticClear">Clear Selection</button>
+    </div>
+    <div class="color-row" style="margin-left: 12px;">
+      <span class="param-label" style="margin-bottom:0">Fill selected:</span>
+      <input type="color" id="staticFillPicker" value="#ffffff">
+    </div>
+    <div class="gradient-builder">
+      <span class="param-label" style="margin-bottom:0">Gradient:</span>
+      <input type="color" id="gradStart" value="#a855f7">
+      <input type="color" id="gradEnd" value="#ec4899">
+      <button class="btn-sm" id="btnApplyGradient" style="padding: 4px 8px;">Apply</button>
+    </div>
+  `;
+  editorCard.appendChild(controls);
+  container.appendChild(editorCard);
+
+  // Wire up action listeners
+  controls.querySelector('#btnStaticSelectAll').addEventListener('click', () => {
+    const cells = grid.querySelectorAll('.zone-editor-cell');
+    cells.forEach((cell, idx) => {
+      selectedStaticZones.add(idx);
+      cell.classList.add('selected');
+    });
+  });
+
+  controls.querySelector('#btnStaticInvert').addEventListener('click', () => {
+    const cells = grid.querySelectorAll('.zone-editor-cell');
+    cells.forEach((cell, idx) => {
+      if (selectedStaticZones.has(idx)) {
+        selectedStaticZones.delete(idx);
+        cell.classList.remove('selected');
+      } else {
+        selectedStaticZones.add(idx);
+        cell.classList.add('selected');
+      }
+    });
+  });
+
+  controls.querySelector('#btnStaticClear').addEventListener('click', () => {
+    const cells = grid.querySelectorAll('.zone-editor-cell');
+    cells.forEach(cell => cell.classList.remove('selected'));
+    selectedStaticZones.clear();
+  });
+
+  // Bulk color fill picker
+  controls.querySelector('#staticFillPicker').addEventListener('input', e => {
+    const [r, g, b] = hexToRgb(e.target.value);
+    if (selectedStaticZones.size === 0) return;
+    
+    selectedStaticZones.forEach(idx => {
+      staticColors[idx] = { r, g, b };
+      const cell = grid.querySelector(`.zone-editor-cell[data-index="${idx}"]`);
+      if (cell) cell.style.background = e.target.value;
+    });
+    syncStaticValues();
+  });
+
+  // Gradient Apply
+  controls.querySelector('#btnApplyGradient').addEventListener('click', () => {
+    const startHex = controls.querySelector('#gradStart').value;
+    const endHex = controls.querySelector('#gradEnd').value;
+    const startRgb = hexToRgb(startHex);
+    const endRgb = hexToRgb(endHex);
+    
+    // Gradient interpolates either across selection or entire strip if nothing is selected
+    const targetIndices = selectedStaticZones.size > 0 
+      ? Array.from(selectedStaticZones).sort((a,b)=>a-b)
+      : Array.from({length: 24}, (_, i) => i);
+      
+    if (targetIndices.length < 2) {
+      toast('Select at least 2 zones for a gradient', 'err');
+      return;
+    }
+    
+    const count = targetIndices.length;
+    targetIndices.forEach((idx, i) => {
+      const t = i / (count - 1);
+      const r = Math.round(startRgb[0] + (endRgb[0] - startRgb[0]) * t);
+      const g = Math.round(startRgb[1] + (endRgb[1] - startRgb[1]) * t);
+      const b = Math.round(startRgb[2] + (endRgb[2] - startRgb[2]) * t);
+      staticColors[idx] = { r, g, b };
+      const cell = grid.querySelector(`.zone-editor-cell[data-index="${idx}"]`);
+      if (cell) cell.style.background = rgbToHex(r, g, b);
+    });
+    syncStaticValues();
+  });
+
+  syncStaticValues();
+}
+
+function toggleZoneSelection(idx, cell) {
+  if (selectedStaticZones.has(idx)) {
+    selectedStaticZones.delete(idx);
+    cell.classList.remove('selected');
+  } else {
+    selectedStaticZones.add(idx);
+    cell.classList.add('selected');
+  }
+}
+
+function syncStaticValues() {
+  for (let i = 0; i < 24; i++) {
+    paramValues[`color${i + 1}`] = staticColors[i];
+  }
+}
+
+// ─── Layered Effect Builder Editor ───────────────────────────────────────────
+function renderLayeredEditor(container) {
+  container.innerHTML = '';
+  const editor = document.createElement('div');
+  editor.className = 'layers-container';
+
+  // Add Layer Header Bar
+  const addBar = document.createElement('div');
+  addBar.className = 'add-layer-bar';
+  
+  const select = document.createElement('select');
+  select.className = 'param-select';
+  select.style.flex = '1';
+  presets.forEach(p => {
+    // Exclude layered itself from sub-presets to avoid recursions
+    if (p.name !== 'layered') {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.display_name;
+      select.appendChild(opt);
+    }
+  });
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn-sm';
+  addBtn.style.padding = '8px 16px';
+  addBtn.textContent = 'Add Layer +';
+  addBtn.addEventListener('click', () => {
+    addLayer(select.value);
+  });
+
+  addBar.appendChild(select);
+  addBar.appendChild(addBtn);
+  editor.appendChild(addBar);
+
+  // Active Layers List
+  const list = document.createElement('div');
+  list.style.display = 'flex';
+  list.style.flexDirection = 'column';
+  list.style.gap = '8px';
+
+  if (layeredConfig.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'no-params';
+    empty.style.textAlign = 'center';
+    empty.style.padding = '24px';
+    empty.textContent = 'No layers added yet. Choose an effect above to start layering.';
+    list.appendChild(empty);
+  } else {
+    layeredConfig.forEach((layer, idx) => {
+      const card = document.createElement('div');
+      card.className = 'layer-card';
+
+      // Header row with details & actions
+      const header = document.createElement('div');
+      header.className = 'layer-card-header';
+      
+      const title = document.createElement('div');
+      title.className = 'layer-title';
+      title.innerHTML = `<span style="color:var(--text-muted); font-size:11px; margin-right:4px;">#${idx+1}</span> ${layer.display_name}`;
+      header.appendChild(title);
+
+      const toggleSet = document.createElement('button');
+      toggleSet.className = 'layer-settings-toggle';
+      toggleSet.textContent = openLayerSettingsIndex === idx ? 'Close Settings ▲' : 'Edit Settings ▼';
+      toggleSet.addEventListener('click', () => {
+        openLayerSettingsIndex = openLayerSettingsIndex === idx ? null : idx;
+        renderLayeredEditor(container);
+      });
+      header.appendChild(toggleSet);
+
+      // Reordering buttons (Move Up/Down)
+      const btnUp = document.createElement('button');
+      btnUp.className = 'layer-action-btn';
+      btnUp.textContent = '▲';
+      btnUp.disabled = idx === 0;
+      btnUp.addEventListener('click', () => {
+        const temp = layeredConfig[idx];
+        layeredConfig[idx] = layeredConfig[idx - 1];
+        layeredConfig[idx - 1] = temp;
+        // Re-assign priorities based on order
+        layeredConfig.forEach((l, i) => l.priority = i + 1);
+        syncLayeredConfigJSON();
+        renderLayeredEditor(container);
+      });
+      header.appendChild(btnUp);
+
+      const btnDown = document.createElement('button');
+      btnDown.className = 'layer-action-btn';
+      btnDown.textContent = '▼';
+      btnDown.disabled = idx === layeredConfig.length - 1;
+      btnDown.addEventListener('click', () => {
+        const temp = layeredConfig[idx];
+        layeredConfig[idx] = layeredConfig[idx + 1];
+        layeredConfig[idx + 1] = temp;
+        layeredConfig.forEach((l, i) => l.priority = i + 1);
+        syncLayeredConfigJSON();
+        renderLayeredEditor(container);
+      });
+      header.appendChild(btnDown);
+
+      // Delete layer
+      const btnDel = document.createElement('button');
+      btnDel.className = 'layer-action-btn';
+      btnDel.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+      btnDel.style.color = 'var(--error)';
+      btnDel.textContent = '✕';
+      btnDel.addEventListener('click', () => {
+        layeredConfig.splice(idx, 1);
+        layeredConfig.forEach((l, i) => l.priority = i + 1);
+        syncLayeredConfigJSON();
+        renderLayeredEditor(container);
+      });
+      header.appendChild(btnDel);
+
+      card.appendChild(header);
+
+      // Opacity row
+      const opRow = document.createElement('div');
+      opRow.className = 'layer-opacity-row';
+      opRow.innerHTML = `
+        <span class="param-label" style="margin-bottom:0">Opacity:</span>
+        <input type="range" min="0" max="100" value="${Math.round(layer.opacity * 100)}">
+        <span style="font-family:'JetBrains Mono', monospace; font-size:11px; width:34px; text-align:right;">${Math.round(layer.opacity * 100)}%</span>
+      `;
+      const slider = opRow.querySelector('input');
+      const text = opRow.querySelector('span:last-child');
+      slider.addEventListener('input', e => {
+        const val = parseInt(e.target.value) / 100;
+        layer.opacity = val;
+        text.textContent = e.target.value + '%';
+        syncLayeredConfigJSON();
+      });
+      card.appendChild(opRow);
+
+      // Settings Grid (if expanded)
+      if (openLayerSettingsIndex === idx) {
+        const subParams = document.createElement('div');
+        subParams.className = 'layer-sub-params';
+
+        const meta = presets.find(p => p.name === layer.name);
+        if (meta && meta.parameters && meta.parameters.length > 0) {
+          meta.parameters.forEach(p => {
+            const row = document.createElement('div');
+            row.className = 'param-card';
+            row.style.background = 'rgba(255,255,255,0.01)';
+            row.style.padding = '8px';
+
+            if (p.name === 'audio_source') {
+              row.innerHTML = `
+                <div class="param-label" style="font-size:9px;">${p.label}</div>
+                <select class="param-select" style="padding: 6px 8px; font-size:12px;">
+                  <option value="0">System Audio</option>
+                  <option value="1">Microphone</option>
+                  <option value="2">Both</option>
+                </select>
+              `;
+              const select = row.querySelector('select');
+              select.value = Math.round(layer.parameters[p.name] || p.default).toString();
+              select.addEventListener('change', e => {
+                layer.parameters[p.name] = parseFloat(e.target.value);
+                syncLayeredConfigJSON();
+              });
+            } else if (p.param_type.type === 'Color') {
+              const val = layer.parameters[p.name] || p.param_type;
+              const hex = rgbToHex(val.r, val.g, val.b);
+              row.innerHTML = `
+                <div class="param-label" style="font-size:9px;">${p.label}</div>
+                <div class="color-row">
+                  <input type="color" value="${hex}" style="width:36px; height:24px;">
+                </div>
+              `;
+              row.querySelector('input').addEventListener('input', e => {
+                const [r, g, b] = hexToRgb(e.target.value);
+                layer.parameters[p.name] = { r, g, b };
+                syncLayeredConfigJSON();
+              });
+            } else {
+              // Float
+              const val = layer.parameters[p.name] !== undefined ? layer.parameters[p.name] : p.default;
+              row.innerHTML = `
+                <div class="param-label" style="font-size:9px;">${p.label}</div>
+                <div class="param-slider-row">
+                  <input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${val}">
+                  <span style="font-family:'JetBrains Mono'; font-size:11px;">${val}</span>
+                </div>
+              `;
+              const slider = row.querySelector('input');
+              const valText = row.querySelector('span');
+              slider.addEventListener('input', e => {
+                const v = parseFloat(e.target.value);
+                layer.parameters[p.name] = v;
+                valText.textContent = v.toFixed(p.step < 0.1 ? 2 : p.step < 1 ? 1 : 0);
+                syncLayeredConfigJSON();
+              });
+            }
+            subParams.appendChild(row);
+          });
+        } else {
+          subParams.innerHTML = '<div class="no-params" style="font-size:11px;">No adjustable settings for this effect.</div>';
+        }
+        card.appendChild(subParams);
+      }
+
+      list.appendChild(card);
+    });
+  }
+
+  editor.appendChild(list);
+  container.appendChild(editor);
+  syncLayeredConfigJSON();
+}
+
+function getDefaultParams(presetName) {
+  const p = presets.find(pr => pr.name === presetName);
+  if (!p) return {};
+  const params = {};
+  p.parameters.forEach(param => {
+    if (param.param_type.type === 'Color') {
+      params[param.name] = { r: param.param_type.r, g: param.param_type.g, b: param.param_type.b };
+    } else {
+      params[param.name] = param.default;
+    }
+  });
+  return params;
+}
+
+function addLayer(presetName) {
+  const meta = presets.find(p => p.name === presetName);
+  if (!meta) return;
+  const layer = {
+    name: presetName,
+    display_name: meta.display_name,
+    opacity: 1.0,
+    priority: layeredConfig.length + 1,
+    parameters: getDefaultParams(presetName)
+  };
+  layeredConfig.push(layer);
+  syncLayeredConfigJSON();
+  renderLayeredEditor(document.getElementById('customParamsArea'));
+}
+
+function syncLayeredConfigJSON() {
+  // Format each layer back to the backend's expected structure
+  const formatted = layeredConfig.map(l => ({
+    name: l.name,
+    opacity: l.opacity,
+    priority: l.priority,
+    parameters: l.parameters
+  }));
+  paramValues['config'] = JSON.stringify(formatted);
+}
+
+// ─── Apply preset ─────────────────────────────────────────────────────────────
+document.getElementById('applyBtn').addEventListener('click', applyPreset);
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (!selectedPreset) return;
+  
+  if (selectedPreset.name === 'layered') {
+    layeredConfig = [];
+    openLayerSettingsIndex = null;
+    paramValues = { config: "[]" };
+  } else if (selectedPreset.name === 'staticColor') {
+    paramValues = {};
+    for (let i = 1; i <= 24; i++) {
+      paramValues[`color${i}`] = { r: 255, g: 255, b: 255 };
+    }
+  } else {
+    paramValues = getDefaultParams(selectedPreset.name);
+  }
+  
+  renderParams(selectedPreset);
+  toast(`↺ Parameters reset to defaults`, 'ok');
+});
+
+async function applyPreset() {
+  if (!selectedPreset) return;
+
+  const params = {};
+  for (const [k, v] of Object.entries(paramValues)) {
+    params[k] = v;
+  }
+
+  try {
+    const res = await api('POST', '/api/preset', { preset: selectedPreset.name, params });
+    if (res.ok) {
+      toast(`✦ ${selectedPreset.display_name} activated`, 'ok');
+    } else {
+      toast('Error: ' + (res.error || 'Unknown'), 'err');
+    }
+  } catch(e) {
+    toast('Network error', 'err');
+  }
+}
+
+// ─── Brightness ───────────────────────────────────────────────────────────────
+function setupBrightness() {
+  const slider = document.getElementById('brightnessSlider');
+  const val = document.getElementById('brightnessVal');
+  slider.addEventListener('input', e => {
+    val.textContent = e.target.value + '%';
+    clearTimeout(brightnessDebounce);
+    brightnessDebounce = setTimeout(async () => {
+      await api('POST', '/api/brightness', { brightness: parseInt(e.target.value) / 100 });
+    }, 150);
+  });
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 2800);
+}
+
+// ─── Colors ───────────────────────────────────────────────────────────────────
+function rgbToHex(r, g, b) {
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+function hexToRgb(hex) {
+  const m = hex.replace('#','').match(/.{2}/g);
+  return m.map(h => parseInt(h, 16));
+}
+</script>
+</body>
+</html>

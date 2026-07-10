@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 const VID: u16 = 0x048d;
 const PID: u16 = 0xc693;
 pub const NUM_ZONES: usize = 24;
-const PACKET_SIZE: usize = 65; // HID report size (64 + 1 for report ID)
+
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -102,6 +102,7 @@ pub struct LedController {
     frame_buffer: [Color; NUM_ZONES],
     ui_frame: Arc<Mutex<Vec<Color>>>, //frontend-visible frame
     brightness: f32, // global brightness (0.0 - 1.0), applied as final pass
+    pub suspend_flushing: bool,
 }
 
 impl LedController {
@@ -111,6 +112,7 @@ impl LedController {
             frame_buffer: [Color::black(); NUM_ZONES],
             ui_frame,
             brightness: 1.0,
+            suspend_flushing: false,
         }
         
     }
@@ -132,6 +134,10 @@ impl LedController {
             {
                 self.device = api.open_path(device_info.path()).ok();
                 if self.device.is_some() {
+                    // Disable autonomous mode to take control of lighting
+                    if let Err(e) = self.set_autonomous_mode(false) {
+                        eprintln!("[LedController] Failed to disable autonomous mode: {}", e);
+                    }
                     return Ok(());
                 }
             }
@@ -157,6 +163,9 @@ impl LedController {
 
     /// Disconnect from the device
     pub fn disconnect(&mut self) {
+        if self.device.is_some() {
+            let _ = self.set_autonomous_mode(true);
+        }
         self.device = None;
     }
 
@@ -220,37 +229,40 @@ impl LedController {
         if start > 23 || end > 23 || start > end {
             return Err(format!("Invalid zone range: {}-{}", start, end));
         }
-        
-        let device = self.device.as_ref().ok_or("Not connected")?;
 
-        // Compute perceptually-scaled color for the device/UI (do NOT replace logical buffer)
-        let scaled = color.perceptual_scale(self.brightness);
-        
-        let mut buf = vec![
-            0x05,     // Command: Vendor lighting
-            0x01,     // Subcommand: Zone range RGB
-            start,    // Start zone index
-            0x00,     // Reserved (must be zero)
-            end,      // End zone index
-            0x00,     // Reserved (must be zero)
-            scaled.r,  // Red (0-255)
-            scaled.g,  // Green (0-255)
-            scaled.b,  // Blue (0-255)
-            0x01,     // Apply/Commit (1 = apply immediately)
-        ];
-        
-        buf.resize(PACKET_SIZE, 0);
-        device.send_feature_report(&buf).map_err(|e| e.to_string())?;
-        
         // Update internal frame buffer (logical color) to keep state synchronized
         for i in start..=end {
             self.frame_buffer[i as usize] = color;
         }
-        
-        // Update frontend-visible frame with SCALED colors so the UI matches the device
-        let mut frame = self.ui_frame.lock().unwrap();
-        for i in start..=end{
-            frame[i as usize] = scaled;
+
+        if !self.suspend_flushing {
+            let device = self.device.as_ref().ok_or("Not connected")?;
+            // Compute perceptually-scaled color for the device/UI (do NOT replace logical buffer)
+            let scaled = color.perceptual_scale(self.brightness);
+            
+            let buf = vec![
+                0x05,     // Command: Vendor lighting
+                0x01,     // Subcommand: Zone range RGB
+                start,    // Start zone index
+                0x00,     // Reserved (must be zero)
+                end,      // End zone index
+                0x00,     // Reserved (must be zero)
+                scaled.r,  // Red (0-255)
+                scaled.g,  // Green (0-255)
+                scaled.b,  // Blue (0-255)
+                0x01,     // Apply/Commit (1 = apply immediately)
+            ];
+            
+            device.send_feature_report(&buf).map_err(|e| e.to_string())?;
+            
+            // Add a delay (10ms for commit/apply) to prevent overwhelming the ITE controller
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            
+            // Update frontend-visible frame with SCALED colors so the UI matches the device
+            let mut frame = self.ui_frame.lock().unwrap();
+            for i in start..=end {
+                frame[i as usize] = scaled;
+            }
         }
         Ok(())
     }
@@ -300,8 +312,12 @@ impl LedController {
             buf.push(0x01);     // Color commit bit
         }
         
-        buf.resize(PACKET_SIZE, 0);
         device.send_feature_report(&buf).map_err(|e| e.to_string())?;
+        
+        // Add a delay to prevent overwhelming the ITE controller (10ms after commit, 5ms between packets)
+        let delay_ms = if commit { 10 } else { 5 };
+        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        
         Ok(())
     }
 
@@ -309,6 +325,9 @@ impl LedController {
     /// Sends all 24 zones in 3 packets (8 zones each)
     /// The last packet has the commit flag set to apply changes
     pub fn flush_buffered(&self) -> Result<(), String> {
+        if self.suspend_flushing {
+            return Ok(());
+        }
         // Prepare color arrays for each packet (logical colors)
         let mut colors_0_7 = [Color::black(); 8];
         let mut colors_8_15 = [Color::black(); 8];
@@ -357,7 +376,32 @@ impl LedController {
     /// Clear all zones (set to black) using command 0x05
     pub fn clear(&mut self) -> Result<(), String> {
         self.frame_buffer = [Color::black(); NUM_ZONES];
-        self.set_all_instant(Color::black())
+        if !self.suspend_flushing {
+            self.set_all_instant(Color::black())?;
+        }
+        Ok(())
+    }
+
+    /// Enable or disable the controller's autonomous (firmware-driven) lighting mode.
+    /// Setting this to false allows the host to drive custom per-zone colors.
+    pub fn set_autonomous_mode(&self, autonomous: bool) -> Result<(), String> {
+        let device = self.device.as_ref().ok_or("Not connected")?;
+        let buf = vec![
+            0x06, // Report ID 6 (LampArrayControlReport)
+            if autonomous { 0x01 } else { 0x00 }, // 0x01 = autonomous, 0x00 = host-controlled
+        ];
+        device.send_feature_report(&buf).map_err(|e| e.to_string())?;
+        
+        // Short delay to let the controller register the mode switch
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        Ok(())
+    }
+}
+
+impl Drop for LedController {
+    fn drop(&mut self) {
+        // Re-enable autonomous (hardware default) mode upon dropping the controller
+        self.disconnect();
     }
 }
 
