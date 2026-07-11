@@ -6,7 +6,82 @@ use hidapi::{HidApi, HidDevice};
 
 use std::sync::{Arc, Mutex};
 
- // Using this to only send the frame data to the frontend for the keyboard widget
+#[cfg(target_os = "linux")]
+use std::os::raw::{c_int, c_ulong};
+#[cfg(target_os = "linux")]
+use std::os::unix::io::AsRawFd;
+#[cfg(target_os = "linux")]
+use std::path::Path;
+
+#[cfg(target_os = "linux")]
+const USBDEVFS_RESET: c_ulong = 0x5514;
+
+#[cfg(target_os = "linux")]
+extern "C" {
+    fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
+}
+
+#[cfg(target_os = "linux")]
+fn reset_usb_device(vid: u16, pid: u16) -> Result<(), String> {
+    let mut target_path = None;
+    if let Ok(entries) = std::fs::read_dir("/sys/bus/usb/devices") {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                let vid_path = path.join("idVendor");
+                let pid_path = path.join("idProduct");
+                let bus_path = path.join("busnum");
+                let dev_path = path.join("devnum");
+                
+                if vid_path.exists() && pid_path.exists() {
+                    let v_str = std::fs::read_to_string(vid_path).unwrap_or_default().trim().to_string();
+                    let p_str = std::fs::read_to_string(pid_path).unwrap_or_default().trim().to_string();
+                    
+                    let target_vid = format!("{:04x}", vid);
+                    let target_pid = format!("{:04x}", pid);
+                    
+                    if v_str == target_vid && (p_str == target_pid || p_str == "89db") {
+                        let bus = std::fs::read_to_string(bus_path).unwrap_or_default().trim().to_string();
+                        let dev = std::fs::read_to_string(dev_path).unwrap_or_default().trim().to_string();
+                        
+                        if let (Ok(bus_num), Ok(dev_num)) = (bus.parse::<u32>(), dev.parse::<u32>()) {
+                            target_path = Some(format!("/dev/bus/usb/{:03}/{:03}", bus_num, dev_num));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(path_str) = target_path {
+        println!("[LedController] Force resetting USB device node: {} ...", path_str);
+        let path = Path::new(&path_str);
+        match std::fs::OpenOptions::new().write(true).open(&path) {
+            Ok(file) => {
+                unsafe {
+                    let fd = file.as_raw_fd();
+                    let res = ioctl(fd, USBDEVFS_RESET, 0);
+                    if res < 0 {
+                        let err = std::io::Error::last_os_error();
+                        eprintln!("[LedController] Failed to send USBDEVFS_RESET ioctl: {}", err);
+                        return Err(err.to_string());
+                    } else {
+                        println!("[LedController] USB reset sent successfully! Waiting 600ms for re-enumeration...");
+                        std::thread::sleep(std::time::Duration::from_millis(600));
+                        return Ok(());
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[LedController] Failed to open USB device node {} for reset: {}", path_str, e);
+                return Err(e.to_string());
+            }
+        }
+    }
+    
+    Err("Device not found in sysfs".to_string())
+}
 
 const VID: u16 = 0x048d;
 const PID: u16 = 0xc693;
@@ -124,6 +199,32 @@ impl LedController {
 
     /// Connect to the RGB keyboard controller with custom VID/PID (interface 1)
     pub fn connect_device(&mut self, vid: u16, pid: u16) -> Result<(), String> {
+        #[cfg(target_os = "linux")]
+        {
+            // Kill any other running instances of rgb-server to release the HID device
+            use sysinfo::System;
+            let mut sys = System::new();
+            sys.refresh_all();
+            let my_pid = std::process::id();
+            let mut killed_any = false;
+            for (pid, process) in sys.processes() {
+                if process.name() == "rgb-server" {
+                    let pid_val = pid.to_string().parse::<u32>().unwrap_or(0);
+                    if pid_val != my_pid && pid_val != 0 {
+                        println!("[LedController] Stopping existing stale instance (PID {})...", pid_val);
+                        process.kill();
+                        killed_any = true;
+                    }
+                }
+            }
+            if killed_any {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+
+            // Force reset the USB device first to claim it cleanly and release other handles
+            let _ = reset_usb_device(vid, pid);
+        }
+
         let api = HidApi::new().map_err(|e| e.to_string())?;
         
         // Find device with interface 1 (RGB controller)
@@ -240,7 +341,7 @@ impl LedController {
             // Compute perceptually-scaled color for the device/UI (do NOT replace logical buffer)
             let scaled = color.perceptual_scale(self.brightness);
             
-            let buf = vec![
+            let mut buf = vec![
                 0x05,     // Command: Vendor lighting
                 0x01,     // Subcommand: Zone range RGB
                 start,    // Start zone index
@@ -252,7 +353,7 @@ impl LedController {
                 scaled.b,  // Blue (0-255)
                 0x01,     // Apply/Commit (1 = apply immediately)
             ];
-            
+            buf.resize(65, 0); // Pad to exactly 65 bytes to prevent firmware crashes
             device.send_feature_report(&buf).map_err(|e| e.to_string())?;
             
             // Add a delay (10ms for commit/apply) to prevent overwhelming the ITE controller
@@ -311,7 +412,7 @@ impl LedController {
             buf.push(color.b);  // Blue
             buf.push(0x01);     // Color commit bit
         }
-        
+        buf.resize(65, 0); // Pad to exactly 65 bytes to prevent firmware crashes
         device.send_feature_report(&buf).map_err(|e| e.to_string())?;
         
         // Add a delay to prevent overwhelming the ITE controller (10ms after commit, 5ms between packets)
@@ -386,10 +487,11 @@ impl LedController {
     /// Setting this to false allows the host to drive custom per-zone colors.
     pub fn set_autonomous_mode(&self, autonomous: bool) -> Result<(), String> {
         let device = self.device.as_ref().ok_or("Not connected")?;
-        let buf = vec![
+        let mut buf = vec![
             0x06, // Report ID 6 (LampArrayControlReport)
             if autonomous { 0x01 } else { 0x00 }, // 0x01 = autonomous, 0x00 = host-controlled
         ];
+        buf.resize(65, 0); // Pad to exactly 65 bytes to prevent firmware crashes
         device.send_feature_report(&buf).map_err(|e| e.to_string())?;
         
         // Short delay to let the controller register the mode switch

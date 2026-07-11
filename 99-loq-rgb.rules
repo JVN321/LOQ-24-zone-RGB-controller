@@ -1,6 +1,6 @@
 # udev rule for Lenovo LOQ 24-Zone RGB Keyboard HID controller
 # VID: 048d (Integrated Technology Express)
-# PID: c693
+# PID: c693 (Normal Mode) / 89db (ITE Upgrade/Bootloader Mode)
 #
 # Install on Fedora:
 #   sudo cp 99-loq-rgb.rules /etc/udev/rules.d/
@@ -11,5 +11,10 @@
 #
 # Note: Fedora uses the 'input' group instead of 'plugdev'.
 
+# Normal Mode (c693)
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="048d", ATTRS{idProduct}=="c693", MODE="0660", GROUP="input", TAG+="udev-acl"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="048d", ATTRS{idProduct}=="c693", MODE="0660", GROUP="input", TAG+="udev-acl", TEST=="power/control", ATTR{power/control}="on"
+
+# Upgrade/Bootloader Mode (89db)
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="048d", ATTRS{idProduct}=="89db", MODE="0660", GROUP="input", TAG+="udev-acl"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="048d", ATTRS{idProduct}=="89db", MODE="0660", GROUP="input", TAG+="udev-acl"
