@@ -74,17 +74,20 @@ impl RgbF {
         let v = max;
 
         // Apply a strong non-linear saturation curve so even slight hints of color become very vibrant.
-        let s_boosted = if s > 0.005 {
-            (s.powf(0.25) * 1.95).min(1.0)
+        // Very dark pixels with any hue should still show that hue on the keyboard.
+        let s_boosted = if s > 0.001 {
+            (s.powf(0.2) * 2.0).min(1.0)
         } else {
-            s
+            0.0
         };
 
-        // Boost Value (brightness) slightly for dimmer colors to pop
-        let v_boosted = if v > 0.01 {
-            (v.powf(0.75) * 1.2).min(1.0)
+        // Boost Value (brightness) so dim content is still visible on the keyboard.
+        // We raise the floor to at least 0.20 so totally dark zones don't disappear entirely.
+        const MIN_BRIGHTNESS: f32 = 0.20;
+        let v_boosted = if v > 0.001 {
+            (v.powf(0.6) * 1.3).max(MIN_BRIGHTNESS).min(1.0)
         } else {
-            v
+            0.0 // truly black — no hue to show, leave dark
         };
 
         // Convert back to RGB
@@ -151,10 +154,10 @@ mod dxgi {
         staging: ID3D11Texture2D,
         width: u32,
         height: u32,
-        // sampling region expressed as fractions [0.0..1.0]
-        sample_top_frac: f32,    // fraction from top where sampling region starts (was 0.85)
-        sample_left_frac: f32,   // fraction from left where horizontal region starts
-        sample_width_frac: f32,  // fraction of total width to sample
+        rect_x: f32,
+        rect_y: f32,
+        rect_width: f32,
+        rect_height: f32,
     }
 
     impl DxgiScreenSampler {
@@ -222,9 +225,10 @@ mod dxgi {
                                             staging: staging_tex,
                                             width,
                                             height,
-                                            sample_top_frac: 0.0,
-                                            sample_left_frac: 0.0,
-                                            sample_width_frac: 1.0,
+                                            rect_x: 0.0,
+                                            rect_y: 0.0,
+                                            rect_width: 1.0,
+                                            rect_height: 1.0,
                                         });
                                     }
                                 }
@@ -274,18 +278,25 @@ mod dxgi {
             }
         }
 
+        pub fn set_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
+            self.rect_x = x.clamp(0.0, 1.0);
+            self.rect_y = y.clamp(0.0, 1.0);
+            self.rect_width = w.clamp(0.01, 1.0);
+            self.rect_height = h.clamp(0.01, 1.0);
+        }
+
         /// Set the vertical start as a fraction [0.0..1.0] from the top of the screen
         pub fn set_sample_top_fraction(&mut self, f: f32) {
-            self.sample_top_frac = f.clamp(0.0, 1.0);
+            self.rect_y = f.clamp(0.0, 1.0);
+            self.rect_height = (1.0 - self.rect_y).clamp(0.01, 1.0);
         }
 
         /// Set the horizontal sampling region using left offset and width (fractions)
         pub fn set_sample_horizontal_region(&mut self, left_frac: f32, width_frac: f32) {
             let left = left_frac.clamp(0.0, 1.0);
             let width = width_frac.clamp(0.0, 1.0);
-            self.sample_left_frac = left;
-            // ensure region stays within bounds
-            self.sample_width_frac = if left + width > 1.0 { 1.0 - left } else { width };
+            self.rect_x = left;
+            self.rect_width = if left + width > 1.0 { 1.0 - left } else { width };
         }
     }
 
@@ -315,22 +326,37 @@ mod dxgi {
                     let pitch = mapped.RowPitch as usize;
 
                     // compute sampling region in pixels using configured fractions
-                    let y_start = (self.height as f32 * self.sample_top_frac) as usize;
-                    let region_left = (self.width as f32 * self.sample_left_frac) as usize;
-                    let region_width = ((self.width as f32) * self.sample_width_frac).max(1.0) as usize;
+                    let region_left = (self.width as f32 * self.rect_x) as usize;
+                    let region_top = (self.height as f32 * self.rect_y) as usize;
+                    let region_width = ((self.width as f32) * self.rect_width).max(1.0) as usize;
+                    let region_height = ((self.height as f32) * self.rect_height).max(1.0) as usize;
 
+                    let col_width = region_width as f32 / AMBIENT_WIDTH as f32;
                     for x in 0..AMBIENT_WIDTH {
+                        let start_x = (region_left as f32 + x as f32 * col_width) as usize;
+                        let end_x = (region_left as f32 + (x + 1) as f32 * col_width) as usize;
+                        let end_x = end_x.max(start_x + 1).min(self.width as usize);
+                        let count = (end_x - start_x) as f32;
+
                         for y in 0..AMBIENT_HEIGHT {
-                            // map zone index to region pixel (clamped)
-                            let sx_rel = x * region_width / AMBIENT_WIDTH;
-                            let sx = (region_left + sx_rel).min(self.width as usize - 1);
-                            let sy = y_start + y * (self.height as usize - y_start) / AMBIENT_HEIGHT;
-                            let p = data.add(sy * pitch + sx * 4);
+                            let sy = region_top + y * region_height / AMBIENT_HEIGHT;
+                            let sy = sy.min(self.height as usize - 1);
+                            
+                            let mut r_sum = 0.0;
+                            let mut g_sum = 0.0;
+                            let mut b_sum = 0.0;
+
+                            for sx in start_x..end_x {
+                                let p = data.add(sy * pitch + sx * 4);
+                                b_sum += *p.add(0) as f32 / 255.0;
+                                g_sum += *p.add(1) as f32 / 255.0;
+                                r_sum += *p.add(2) as f32 / 255.0;
+                            }
 
                             out[x][y] = RgbF {
-                                b: *p.add(0) as f32 / 255.0,
-                                g: *p.add(1) as f32 / 255.0,
-                                r: *p.add(2) as f32 / 255.0,
+                                r: r_sum / count,
+                                g: g_sum / count,
+                                b: b_sum / count,
                             };
                         }
                     }
@@ -353,79 +379,172 @@ pub use dxgi::DxgiScreenSampler;
 #[cfg(not(target_os = "windows"))]
 mod linux_sampler {
     use super::*;
+    use xcap::image::{ImageBuffer, Rgba};
+
+    /// Capture the screen using `grim` (wlr-screencopy, no portal prompt).
+    /// Returns raw RGBA bytes and (width, height) on success.
+    fn capture_with_grim() -> Option<(ImageBuffer<Rgba<u8>, Vec<u8>>, u32, u32)> {
+        // Write PNG to stdout, read it back in memory — no temp file needed.
+        let output = std::process::Command::new("grim")
+            .args(["-t", "png", "-"])
+            .output()
+            .ok()?;
+
+        if !output.status.success() || output.stdout.is_empty() {
+            eprintln!(
+                "⚠️  grim failed ({}): {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+            return None;
+        }
+
+        let img = xcap::image::load_from_memory_with_format(&output.stdout, xcap::image::ImageFormat::Png)
+            .ok()?
+            .into_rgba8();
+        let w = img.width();
+        let h = img.height();
+        Some((img, w, h))
+    }
 
     pub struct LinuxScreenSampler {
-        monitor: Option<xcap::Monitor>,
-        sample_top_frac: f32,
-        sample_left_frac: f32,
-        sample_width_frac: f32,
+        rect_x: f32,
+        rect_y: f32,
+        rect_width: f32,
+        rect_height: f32,
+        /// Cached screen resolution (detected once, updated if it changes)
+        screen_w: u32,
+        screen_h: u32,
     }
 
     impl LinuxScreenSampler {
         pub fn new() -> anyhow::Result<Self> {
-            let monitors = xcap::Monitor::all().map_err(|e| anyhow::anyhow!(e.to_string()))?;
-            let monitor = monitors.into_iter().next();
+            // Do a quick probe capture to learn the screen resolution.
+            let (screen_w, screen_h) = capture_with_grim()
+                .map(|(_, w, h)| (w, h))
+                .unwrap_or((1920, 1080));
+
             Ok(Self {
-                monitor,
-                sample_top_frac: 0.0,
-                sample_left_frac: 0.0,
-                sample_width_frac: 1.0,
+                rect_x: 0.0,
+                rect_y: 0.0,
+                rect_width: 1.0,
+                rect_height: 1.0,
+                screen_w,
+                screen_h,
             })
         }
 
+        pub fn set_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
+            self.rect_x = x.clamp(0.0, 1.0);
+            self.rect_y = y.clamp(0.0, 1.0);
+            self.rect_width = w.clamp(0.01, 1.0);
+            self.rect_height = h.clamp(0.01, 1.0);
+        }
+
         pub fn set_sample_top_fraction(&mut self, f: f32) {
-            self.sample_top_frac = f.clamp(0.0, 1.0);
+            self.rect_y = f.clamp(0.0, 1.0);
+            self.rect_height = (1.0 - self.rect_y).clamp(0.01, 1.0);
         }
 
         pub fn set_sample_horizontal_region(&mut self, left_frac: f32, width_frac: f32) {
             let left = left_frac.clamp(0.0, 1.0);
             let width = width_frac.clamp(0.0, 1.0);
-            self.sample_left_frac = left;
-            self.sample_width_frac = if left + width > 1.0 { 1.0 - left } else { width };
+            self.rect_x = left;
+            self.rect_width = if left + width > 1.0 { 1.0 - left } else { width };
+        }
+    }
+
+    /// Find the most prominent color in a rectangular pixel region using
+    /// 5-bit quantization (32 buckets per channel = 32,768 total buckets).
+    /// Sub-samples the region for speed — captures ~16×16 grid of points.
+    fn dominant_color_in_zone(
+        img: &xcap::image::ImageBuffer<xcap::image::Rgba<u8>, Vec<u8>>,
+        start_x: usize,
+        end_x:   usize,
+        start_y: usize,
+        end_y:   usize,
+    ) -> RgbF {
+        // 5-bit quantization: divide each channel by 8 → 32 levels per channel.
+        // Near-identical hues group into the same bucket, preserving real colors
+        // rather than averaging them into a blended non-color.
+        const QUANT: usize = 8;
+        const BUCKETS: usize = 32; // 256 / 8
+
+        let mut counts = [0u32; BUCKETS * BUCKETS * BUCKETS];
+
+        // Sub-sample: at most ~16 steps per axis for performance.
+        let band_w = (end_x - start_x).max(1);
+        let band_h = (end_y - start_y).max(1);
+        let x_step = (band_w / 16).max(1);
+        let y_step = (band_h / 16).max(1);
+
+        for sy in (start_y..end_y).step_by(y_step) {
+            for sx in (start_x..end_x).step_by(x_step) {
+                let p = img.get_pixel(sx as u32, sy as u32);
+                let ri = (p[0] as usize) / QUANT;
+                let gi = (p[1] as usize) / QUANT;
+                let bi = (p[2] as usize) / QUANT;
+                counts[ri * BUCKETS * BUCKETS + gi * BUCKETS + bi] += 1;
+            }
+        }
+
+        let best_idx = counts
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, &c)| c)
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+
+        let ri = best_idx / (BUCKETS * BUCKETS);
+        let gi = (best_idx / BUCKETS) % BUCKETS;
+        let bi = best_idx % BUCKETS;
+
+        // Use the center of the winning bucket as the representative color.
+        RgbF {
+            r: (ri as f32 + 0.5) * QUANT as f32 / 255.0,
+            g: (gi as f32 + 0.5) * QUANT as f32 / 255.0,
+            b: (bi as f32 + 0.5) * QUANT as f32 / 255.0,
         }
     }
 
     impl ScreenSampler for LinuxScreenSampler {
         fn sample(&mut self, out: &mut [[RgbF; AMBIENT_HEIGHT]; AMBIENT_WIDTH]) -> bool {
-            let monitor = match &self.monitor {
-                Some(m) => m,
+            let (img, img_w, img_h) = match capture_with_grim() {
+                Some(v) => v,
                 None => return false,
             };
-            
-            let img = match monitor.capture_image() {
-                Ok(i) => i,
-                Err(e) => {
-                    eprintln!("⚠️  Ambient capture failed: {:?}", e);
-                    return false;
-                }
-            };
-            
-            let width = img.width() as usize;
-            let height = img.height() as usize;
-            if width == 0 || height == 0 {
-                return false;
+
+            if img_w != self.screen_w || img_h != self.screen_h {
+                self.screen_w = img_w;
+                self.screen_h = img_h;
             }
-            
-            let y_start = (height as f32 * self.sample_top_frac) as usize;
-            let region_left = (width as f32 * self.sample_left_frac) as usize;
-            let region_width = ((width as f32) * self.sample_width_frac).max(1.0) as usize;
-            
+
+            let width  = img_w as usize;
+            let height = img_h as usize;
+
+            let region_left   = (width  as f32 * self.rect_x).round() as usize;
+            let region_top    = (height as f32 * self.rect_y).round() as usize;
+            let region_width  = ((width  as f32) * self.rect_width).max(1.0).round() as usize;
+            let region_height = ((height as f32) * self.rect_height).max(1.0).round() as usize;
+            let region_end_y  = (region_top + region_height).min(height);
+
+            let col_width = region_width as f32 / AMBIENT_WIDTH as f32;
+
             for x in 0..AMBIENT_WIDTH {
+                let start_x = (region_left as f32 + x as f32       * col_width).round() as usize;
+                let end_x   = (region_left as f32 + (x + 1) as f32 * col_width).round() as usize;
+                let end_x   = end_x.max(start_x + 1).min(width);
+
+                // Find the single most-prominent color across the entire zone column.
+                let dominant = dominant_color_in_zone(&img, start_x, end_x, region_top, region_end_y);
+
+                // Fill all AMBIENT_HEIGHT slots with this color —
+                // AmbientEffect::update averages them, which is now a no-op (all equal).
                 for y in 0..AMBIENT_HEIGHT {
-                    let sx_rel = x * region_width / AMBIENT_WIDTH;
-                    let sx = (region_left + sx_rel).min(width - 1);
-                    let sy = y_start + y * (height - y_start) / AMBIENT_HEIGHT;
-                    let sy = sy.min(height - 1);
-                    
-                    let pixel = img.get_pixel(sx as u32, sy as u32);
-                    out[x][y] = RgbF {
-                        r: pixel[0] as f32 / 255.0,
-                        g: pixel[1] as f32 / 255.0,
-                        b: pixel[2] as f32 / 255.0,
-                    };
+                    out[x][y] = dominant;
                 }
             }
-            
+
             true
         }
     }
@@ -433,6 +552,8 @@ mod linux_sampler {
 
 #[cfg(not(target_os = "windows"))]
 pub use linux_sampler::LinuxScreenSampler as DxgiScreenSampler;
+
+
 
 //
 // ================= AMBIENT EFFECT =================

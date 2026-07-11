@@ -606,6 +606,71 @@
     #toast.show { transform: translate(-50%, 0); opacity: 1; }
     #toast.ok { border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.05); }
     #toast.err { border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.05); }
+
+    /* Ambient Screen Selector */
+    .ambient-editor-container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .screen-selector-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .mock-screen-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 480px;
+      margin: 0 auto;
+      background: #08060f;
+      border: 2px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      overflow: hidden;
+      aspect-ratio: 16/9;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    }
+    .mock-screen-bg {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1e1b4b, #311042);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+    }
+    .mock-screen-text {
+      color: rgba(255, 255, 255, 0.15);
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .crop-rect {
+      position: absolute;
+      border: 2px solid #8b5cf6;
+      background: rgba(139, 92, 246, 0.2);
+      box-shadow: 0 0 15px rgba(139, 92, 246, 0.4), inset 0 0 10px rgba(139, 92, 246, 0.3);
+      cursor: move;
+      box-sizing: border-box;
+    }
+    .crop-handle {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #d946ef;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      bottom: -6px;
+      right: -6px;
+      cursor: se-resize;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    }
   </style>
 </head>
 <body>
@@ -891,6 +956,11 @@ function renderParams(preset) {
     return;
   }
 
+  if (preset.name === 'ambient') {
+    renderAmbientEditor(container);
+    return;
+  }
+
   // Standard params list
   const grid = document.createElement('div');
   grid.className = 'params-grid';
@@ -969,6 +1039,204 @@ function renderParams(preset) {
       });
     }
     grid.appendChild(card);
+  });
+}
+
+// ─── Ambient Preset Editor ───────────────────────────────────────────────────
+function renderAmbientEditor(container) {
+  const editorCard = document.createElement('div');
+  editorCard.className = 'ambient-editor-container';
+
+  // Create the mock screen preview
+  const screenCard = document.createElement('div');
+  screenCard.className = 'screen-selector-card';
+  screenCard.innerHTML = `
+    <div class="param-label">Screen Capture Region</div>
+    <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
+      Drag the purple rectangle to move it, or drag the bottom-right pink dot to resize.
+    </div>
+    <div class="mock-screen-wrapper" id="mockScreenWrapper">
+      <div class="mock-screen-bg">
+        <span class="mock-screen-text">Monitor Display</span>
+      </div>
+      <div class="crop-rect" id="cropRect">
+        <div class="crop-handle" id="cropHandle"></div>
+      </div>
+    </div>
+  `;
+  editorCard.appendChild(screenCard);
+
+  // Add the parameters grid for numeric controls
+  const grid = document.createElement('div');
+  grid.className = 'params-grid';
+  editorCard.appendChild(grid);
+
+  container.appendChild(editorCard);
+
+  // Initialize values if undefined
+  const params = ['smoothing', 'rect_x', 'rect_y', 'rect_width', 'rect_height'];
+  params.forEach(p => {
+    if (paramValues[p] === undefined) {
+      const pConfig = selectedPreset.parameters.find(pc => pc.name === p);
+      paramValues[p] = pConfig ? pConfig.default : (p === 'smoothing' ? 3.0 : (p.startsWith('rect_w') || p.startsWith('rect_h') ? 1.0 : 0.0));
+    }
+  });
+
+  // Render the sliders for these parameters
+  selectedPreset.parameters.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'param-card';
+    const val = paramValues[p.name];
+    const precisionStr = val.toFixed(p.step < 0.1 ? 2 : p.step < 1 ? 1 : 0);
+    
+    card.innerHTML = `
+      <div class="param-label">${p.label}</div>
+      <div class="param-slider-row">
+        <input type="range" id="param-${p.name}" min="${p.min}" max="${p.max}" step="${p.step}" value="${val}">
+        <div class="param-val" id="pval-${p.name}">${precisionStr}</div>
+      </div>
+    `;
+    const slider = card.querySelector('input');
+    const valEl = card.querySelector('.param-val');
+    
+    slider.addEventListener('input', e => {
+      paramValues[p.name] = parseFloat(e.target.value);
+      valEl.textContent = paramValues[p.name].toFixed(p.step < 0.1 ? 2 : p.step < 1 ? 1 : 0);
+      updateCropRectFromSliders();
+    });
+    
+    grid.appendChild(card);
+  });
+
+  // Dragging and resizing logic
+  const wrapper = document.getElementById('mockScreenWrapper');
+  const crop = document.getElementById('cropRect');
+  const handle = document.getElementById('cropHandle');
+
+  function updateCropRectFromSliders() {
+    const wWidth = wrapper.clientWidth;
+    const wHeight = wrapper.clientHeight;
+    
+    const x = paramValues['rect_x'] * wWidth;
+    const y = paramValues['rect_y'] * wHeight;
+    const w = paramValues['rect_width'] * wWidth;
+    const h = paramValues['rect_height'] * wHeight;
+    
+    crop.style.left = `${x}px`;
+    crop.style.top = `${y}px`;
+    crop.style.width = `${w}px`;
+    crop.style.height = `${h}px`;
+  }
+
+  // Update immediately after layout yields
+  setTimeout(updateCropRectFromSliders, 50);
+
+  // Resize listener for responsive layout
+  const resizeObserver = new ResizeObserver(() => {
+    updateCropRectFromSliders();
+  });
+  resizeObserver.observe(wrapper);
+
+  // Draggable logic for the crop rect
+  let isDragging = false;
+  let isResizing = false;
+  let startX, startY;
+  let startLeft, startTop, startWidth, startHeight;
+
+  crop.addEventListener('mousedown', e => {
+    if (e.target === handle) return; // let handle handle it
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    
+    const rect = crop.getBoundingClientRect();
+    const wRect = wrapper.getBoundingClientRect();
+    startLeft = rect.left - wRect.left;
+    startTop = rect.top - wRect.top;
+    
+    e.preventDefault();
+  });
+
+  handle.addEventListener('mousedown', e => {
+    isResizing = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    
+    const rect = crop.getBoundingClientRect();
+    startWidth = rect.width;
+    startHeight = rect.height;
+    
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  document.addEventListener('mousemove', e => {
+    const wWidth = wrapper.clientWidth;
+    const wHeight = wrapper.clientHeight;
+    
+    if (isDragging) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      
+      let newLeft = startLeft + dx;
+      let newTop = startTop + dy;
+      
+      const maxLeft = wWidth - crop.clientWidth;
+      const maxTop = wHeight - crop.clientHeight;
+      
+      newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+      newTop = Math.max(0, Math.min(newTop, maxTop));
+      
+      crop.style.left = `${newLeft}px`;
+      crop.style.top = `${newTop}px`;
+      
+      // Update paramValues & sliders
+      paramValues['rect_x'] = parseFloat((newLeft / wWidth).toFixed(2));
+      paramValues['rect_y'] = parseFloat((newTop / wHeight).toFixed(2));
+      
+      document.getElementById('param-rect_x').value = paramValues['rect_x'];
+      document.getElementById('pval-rect_x').textContent = paramValues['rect_x'].toFixed(2);
+      
+      document.getElementById('param-rect_y').value = paramValues['rect_y'];
+      document.getElementById('pval-rect_y').textContent = paramValues['rect_y'].toFixed(2);
+    }
+    
+    if (isResizing) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      
+      let newWidth = startWidth + dx;
+      let newHeight = startHeight + dy;
+      
+      const rect = crop.getBoundingClientRect();
+      const wRect = wrapper.getBoundingClientRect();
+      const currentLeft = rect.left - wRect.left;
+      const currentTop = rect.top - wRect.top;
+      
+      const maxWidth = wWidth - currentLeft;
+      const maxHeight = wHeight - currentTop;
+      
+      newWidth = Math.max(10, Math.min(newWidth, maxWidth));
+      newHeight = Math.max(10, Math.min(newHeight, maxHeight));
+      
+      crop.style.width = `${newWidth}px`;
+      crop.style.height = `${newHeight}px`;
+      
+      // Update paramValues & sliders
+      paramValues['rect_width'] = parseFloat((newWidth / wWidth).toFixed(2));
+      paramValues['rect_height'] = parseFloat((newHeight / wHeight).toFixed(2));
+      
+      document.getElementById('param-rect_width').value = paramValues['rect_width'];
+      document.getElementById('pval-rect_width').textContent = paramValues['rect_width'].toFixed(2);
+      
+      document.getElementById('param-rect_height').value = paramValues['rect_height'];
+      document.getElementById('pval-rect_height').textContent = paramValues['rect_height'].toFixed(2);
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    isDragging = false;
+    isResizing = false;
   });
 }
 

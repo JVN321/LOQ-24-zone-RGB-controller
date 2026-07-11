@@ -618,13 +618,22 @@ fn build_effect_inner(
             Box::new(AudioRippleEffect::new(sampler, getf!("sensitivity", 1.0), getf!("speed", 40.0), getf!("width", 3.0), getf!("lifetime", 0.8)))
         }
         "rainbow_ripple"    => Box::new(RainbowRippleEffect::new(getf!("speed", 40.0), getf!("width", 3.0), getf!("lifetime", 0.8))),
+        "keyboard_wave"     => Box::new(crate::presets::keyboard_wave::KeyboardWaveEffect::new(
+            getf!("speed", 1.0),
+            getf!("ripple_speed", 20.0),
+            getf!("width", 3.0),
+            getf!("lifetime", 1.0),
+            getf!("base_brightness", 0.20),
+        )),
         "ambient" => {
-            let smoothing = getf!("smoothing", 1.0);
+            let smoothing = getf!("smoothing", 3.0);
+            let rect_x = getf!("rect_x", 0.0);
+            let rect_y = getf!("rect_y", 0.0);
+            let rect_width = getf!("rect_width", 1.0);
+            let rect_height = getf!("rect_height", 1.0);
+            
             let mut sampler = crate::presets::ambient::DxgiScreenSampler::new().map_err(|e| e.to_string())?;
-            let l = preset_config.parameters.get("sample_left").and_then(|v| match v { ParameterValue::Float(f) => Some(*f), _ => None });
-            let w = preset_config.parameters.get("sample_width").and_then(|v| match v { ParameterValue::Float(f) => Some(*f), _ => None });
-            if let (Some(l), Some(w)) = (l, w) { sampler.set_sample_horizontal_region(l, w); }
-            else if let Ok(s) = crate::settings::load_settings() { sampler.set_sample_horizontal_region(s.ambient_sample_left_fraction, s.ambient_sample_width_fraction); }
+            sampler.set_rect(rect_x, rect_y, rect_width, rect_height);
             Box::new(AmbientEffect::new(sampler, smoothing))
         }
         "audio_sparkle_media" => {

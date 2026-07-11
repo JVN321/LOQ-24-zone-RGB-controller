@@ -17,7 +17,8 @@ sudo dnf install -y \
     pipewire-devel \
     dbus-devel \
     clang \
-    mesa-libgbm-devel
+    mesa-libgbm-devel \
+    grim
 
 echo ""
 echo "✅ System dependencies installed."

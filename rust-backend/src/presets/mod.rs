@@ -98,14 +98,6 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
             display_name: "Screen Ambiance light effect.".to_string(),
             description: "Mimics ambient light based on screen content.".to_string(),
             parameters: vec![
-                ParameterConfig
-                {name: "speed".to_string(),
-                    label: "Speed".to_string(),
-                    param_type: ParameterType::Float,
-                    min: 0.1,
-                    max: 5.0,
-                    default: 1.0,
-                    step: 0.1,},
                 ParameterConfig {
                     name: "smoothing".to_string(),
                     label: "Smoothing".to_string(),
@@ -115,10 +107,9 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
                     default: 3.0,
                     step: 0.1,
                 },
-                // Sampling region controls (fractions where 0.0 = top/left, 1.0 = bottom/right)
                 ParameterConfig {
-                    name: "sample_left".to_string(),
-                    label: "Screen sample left".to_string(),
+                    name: "rect_x".to_string(),
+                    label: "Capture Rect X (Left)".to_string(),
                     param_type: ParameterType::Float,
                     min: 0.0,
                     max: 1.0,
@@ -126,8 +117,26 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
                     step: 0.01,
                 },
                 ParameterConfig {
-                    name: "sample_width".to_string(),
-                    label: "Screen sample width".to_string(),
+                    name: "rect_y".to_string(),
+                    label: "Capture Rect Y (Top)".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.0,
+                    step: 0.01,
+                },
+                ParameterConfig {
+                    name: "rect_width".to_string(),
+                    label: "Capture Rect Width".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.01,
+                    max: 1.0,
+                    default: 1.0,
+                    step: 0.01,
+                },
+                ParameterConfig {
+                    name: "rect_height".to_string(),
+                    label: "Capture Rect Height".to_string(),
                     param_type: ParameterType::Float,
                     min: 0.01,
                     max: 1.0,
@@ -625,6 +634,58 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
                 }
             ],
         },
+        PresetMetadata {
+            name: "keyboard_wave".to_string(),
+            display_name: "Keyboard Wave".to_string(),
+            description: "Flowing RGB rainbow wave that ripples like water wherever you type.".to_string(),
+            parameters: vec![
+                ParameterConfig {
+                    name: "speed".to_string(),
+                    label: "Wave Speed".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.1,
+                    max: 10.0,
+                    default: 1.0,
+                    step: 0.1,
+                },
+                ParameterConfig {
+                    name: "ripple_speed".to_string(),
+                    label: "Ripple Speed".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 5.0,
+                    max: 100.0,
+                    default: 20.0,
+                    step: 0.5,
+                },
+                ParameterConfig {
+                    name: "width".to_string(),
+                    label: "Ripple Width".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.5,
+                    max: 10.0,
+                    default: 3.0,
+                    step: 0.1,
+                },
+                ParameterConfig {
+                    name: "lifetime".to_string(),
+                    label: "Ripple Lifetime (sec)".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.1,
+                    max: 5.0,
+                    default: 1.0,
+                    step: 0.1,
+                },
+                ParameterConfig {
+                    name: "base_brightness".to_string(),
+                    label: "Background Brightness".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.20,
+                    step: 0.05,
+                },
+            ],
+        },
     ]
 }
 
@@ -657,3 +718,4 @@ pub mod audio_sparkle_media;
 pub mod rainbow_ripple;
 pub mod audio_ripple;
 pub mod layered;
+pub mod keyboard_wave;

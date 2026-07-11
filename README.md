@@ -29,7 +29,7 @@ A lightweight, native high-performance Linux port/controller for managing 24 ind
 - Nebula
 - Chromatic Breath
 - **Audio Reactive:** Audio Sparkle, Audio Sparkle Rainbow, Audio Sparkle Media, Audio Ripple
-- **Typing Reactive:** Typing Rainbow Ripple
+- **Typing Reactive:** Typing Rainbow Ripple, Keyboard Wave *(glowing rainbow wave with water ripples)*
 - **Multi-Effect Layering:** Stack, layer, and mix multiple effects together with customizable opacity, intensity, and priority levels.
 
 ---
