@@ -85,14 +85,35 @@ fn api_err(msg: impl Into<String>) -> (StatusCode, Json<ApiError>) {
     (StatusCode::BAD_REQUEST, Json(ApiError { error: msg.into() }))
 }
 
-// ─── Effect loop ──────────────────────────────────────────────────────────────
-
 fn start_effect_loop(state: SharedState, tx: FrameSender) {
     std::thread::spawn(move || {
+        let mut last_connect_attempt = std::time::Instant::now() - Duration::from_secs(5);
         loop {
             std::thread::sleep(Duration::from_millis(40)); // ~25 fps
 
             let mut s = state.lock().unwrap();
+
+            // Auto-reconnect if not connected to the physical device
+            if !s.controller.is_connected() {
+                let now = std::time::Instant::now();
+                if now.duration_since(last_connect_attempt) > Duration::from_secs(2) {
+                    last_connect_attempt = now;
+                    println!("[server] Keyboard not connected. Attempting to connect...");
+                    match s.controller.connect() {
+                        Ok(()) => {
+                            println!("✅ [server] Keyboard connected successfully!");
+                            // Restart active effect to ensure initialization commands run on the hardware
+                            if let Some(ref mut effect) = s.current_effect {
+                                effect.start();
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("⚠️ [server] Connection attempt failed: {}", e);
+                        }
+                    }
+                }
+            }
+
             let now = std::time::Instant::now();
             let raw_delta = (now - s.last_update).as_secs_f32();
             s.last_update = now;

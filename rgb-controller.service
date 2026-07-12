@@ -1,0 +1,16 @@
+[Unit]
+Description=Lenovo LOQ RGB Controller Daemon
+After=graphical-session.target
+
+[Service]
+# Points to the compiled release binary
+ExecStart=%h/.local/bin/rgb-server
+Restart=always
+RestartSec=3
+
+# Ensure user session environment variables are imported
+# (Required for Wayland screen capture/grim to work)
+Environment=PATH=/usr/bin:/usr/local/bin:%h/.local/bin
+
+[Install]
+WantedBy=default.target

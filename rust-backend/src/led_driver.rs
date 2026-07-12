@@ -246,6 +246,15 @@ impl LedController {
     /// * `start` - Starting zone (0-23)
     /// * `end` - Ending zone (0-23)
     /// * `color` - RGB color to apply
+    /// Set a range of zones to a specific color using command 0x05
+    /// This command applies immediately and is more efficient for solid colors
+    /// 
+    /// Format: [0x05, 0x01, start_zone, 0x00, end_zone, 0x00, R, G, B, 0x01]
+    /// 
+    /// # Arguments
+    /// * `start` - Starting zone (0-23)
+    /// * `end` - Ending zone (0-23)
+    /// * `color` - RGB color to apply
     pub fn set_range(&mut self, start: u8, end: u8, color: Color) -> Result<(), String> {
         if start > 23 || end > 23 || start > end {
             return Err(format!("Invalid zone range: {}-{}", start, end));
@@ -273,7 +282,10 @@ impl LedController {
                 scaled.b,  // Blue (0-255)
                 0x01,     // Apply/Commit (1 = apply immediately)
             ];
-            device.send_feature_report(&buf).map_err(|e| e.to_string())?;
+            if let Err(e) = device.send_feature_report(&buf) {
+                self.device = None;
+                return Err(e.to_string());
+            }
             
             // Add a delay (10ms for commit/apply) to prevent overwhelming the ITE controller
             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -309,7 +321,7 @@ impl LedController {
     /// * `zone_start` - Starting zone index (0, 8, or 16)
     /// * `colors` - Array of exactly 8 colors
     /// * `commit` - Set to true for the last packet to apply changes
-    fn send_zone_packet(&self, zone_start: u8, colors: &[Color; 8], commit: bool) -> Result<(), String> {
+    fn send_zone_packet(&mut self, zone_start: u8, colors: &[Color; 8], commit: bool) -> Result<(), String> {
         let device = self.device.as_ref().ok_or("Not connected")?;
         
         let mut buf = vec![
@@ -331,7 +343,10 @@ impl LedController {
             buf.push(color.b);  // Blue
             buf.push(0x01);     // Color commit bit
         }
-        device.send_feature_report(&buf).map_err(|e| e.to_string())?;
+        if let Err(e) = device.send_feature_report(&buf) {
+            self.device = None;
+            return Err(e.to_string());
+        }
         
         // Add a delay to prevent overwhelming the ITE controller (10ms after commit, 5ms between packets)
         let delay_ms = if commit { 10 } else { 5 };
@@ -343,7 +358,7 @@ impl LedController {
     /// Flush the frame buffer to the device using command 0x04
     /// Sends all 24 zones in 3 packets (8 zones each)
     /// The last packet has the commit flag set to apply changes
-    pub fn flush_buffered(&self) -> Result<(), String> {
+    pub fn flush_buffered(&mut self) -> Result<(), String> {
         if self.suspend_flushing {
             return Ok(());
         }
@@ -403,13 +418,16 @@ impl LedController {
 
     /// Enable or disable the controller's autonomous (firmware-driven) lighting mode.
     /// Setting this to false allows the host to drive custom per-zone colors.
-    pub fn set_autonomous_mode(&self, autonomous: bool) -> Result<(), String> {
+    pub fn set_autonomous_mode(&mut self, autonomous: bool) -> Result<(), String> {
         let device = self.device.as_ref().ok_or("Not connected")?;
         let buf = vec![
             0x06, // Report ID 6 (LampArrayControlReport)
             if autonomous { 0x01 } else { 0x00 }, // 0x01 = autonomous, 0x00 = host-controlled
         ];
-        device.send_feature_report(&buf).map_err(|e| e.to_string())?;
+        if let Err(e) = device.send_feature_report(&buf) {
+            self.device = None;
+            return Err(e.to_string());
+        }
         
         // Short delay to let the controller register the mode switch
         std::thread::sleep(std::time::Duration::from_millis(10));
