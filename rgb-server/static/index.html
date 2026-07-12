@@ -935,7 +935,7 @@ async function refreshStatus() {
       highlightActive(s.preset);
       const activePresetObj = presets.find(p => p.name === s.preset);
       if (activePresetObj) {
-        selectPreset(activePresetObj);
+        selectPreset(activePresetObj, false);
       }
     }
   } catch(e) {}
@@ -958,7 +958,7 @@ function renderPresetList(list) {
       <div class="preset-name">${p.display_name}</div>
       <div class="preset-desc">${p.description}</div>
     `;
-    item.addEventListener('click', () => selectPreset(p));
+    item.addEventListener('click', () => selectPreset(p, true));
     el.appendChild(item);
   });
 }
@@ -978,7 +978,7 @@ function highlightActive(name) {
   });
 }
 
-function selectPreset(preset) {
+function selectPreset(preset, autoApply = true) {
   selectedPreset = preset;
   paramValues = {};
   highlightActive(preset.name);
@@ -1043,6 +1043,10 @@ function selectPreset(preset) {
   }
 
   renderParams(preset);
+
+  if (autoApply) {
+    applyPreset(true);
+  }
 }
 
 // ─── Parameter Panel Rendering ───────────────────────────────────────────────
@@ -1111,6 +1115,7 @@ function renderParams(preset) {
       select.value = Math.round(val).toString();
       select.addEventListener('change', e => {
         paramValues[p.name] = parseFloat(e.target.value);
+        debouncedApplyPreset();
       });
     } else if (p.param_type.type === 'Color') {
       const hex = rgbToHex(val.r, val.g, val.b);
@@ -1125,6 +1130,7 @@ function renderParams(preset) {
       card.querySelector('input').addEventListener('input', e => {
         const [r, g, b] = hexToRgb(e.target.value);
         paramValues[p.name] = { r, g, b };
+        debouncedApplyPreset();
       });
     } else {
       // Standard Float Slider
@@ -1144,6 +1150,7 @@ function renderParams(preset) {
         valEl.textContent = parseFloat(e.target.value).toFixed(
           p.step < 0.1 ? 2 : p.step < 1 ? 1 : 0
         );
+        debouncedApplyPreset();
       });
     }
     grid.appendChild(card);
@@ -1211,6 +1218,7 @@ function renderAmbientEditor(container) {
       paramValues[p.name] = parseFloat(e.target.value);
       valEl.textContent = paramValues[p.name].toFixed(p.step < 0.1 ? 2 : p.step < 1 ? 1 : 0);
       updateCropRectFromSliders();
+      debouncedApplyPreset();
     });
     
     grid.appendChild(card);
@@ -1307,6 +1315,7 @@ function renderAmbientEditor(container) {
       
       document.getElementById('param-rect_y').value = paramValues['rect_y'];
       document.getElementById('pval-rect_y').textContent = paramValues['rect_y'].toFixed(2);
+      debouncedApplyPreset();
     }
     
     if (isResizing) {
@@ -1339,10 +1348,14 @@ function renderAmbientEditor(container) {
       
       document.getElementById('param-rect_height').value = paramValues['rect_height'];
       document.getElementById('pval-rect_height').textContent = paramValues['rect_height'].toFixed(2);
+      debouncedApplyPreset();
     }
   });
 
   document.addEventListener('mouseup', () => {
+    if (isDragging || isResizing) {
+      applyPreset(false);
+    }
     isDragging = false;
     isResizing = false;
   });
@@ -1478,7 +1491,7 @@ let applyPresetTimeout = null;
 let lastApplyPresetTime = 0;
 
 function debouncedApplyPreset() {
-  if (!selectedPreset || selectedPreset.name !== 'staticColor') return;
+  if (!selectedPreset) return;
   const now = Date.now();
   const timeSinceLast = now - lastApplyPresetTime;
   
@@ -1489,11 +1502,11 @@ function debouncedApplyPreset() {
   
   if (timeSinceLast >= 50) { // Max 20 updates per second to protect the hardware
     lastApplyPresetTime = now;
-    applyPreset();
+    applyPreset(false);
   } else {
     applyPresetTimeout = setTimeout(() => {
       lastApplyPresetTime = Date.now();
-      applyPreset();
+      applyPreset(false);
     }, 50 - timeSinceLast);
   }
 }
@@ -1597,6 +1610,7 @@ function renderLayeredEditor(container) {
         // Re-assign priorities based on order
         layeredConfig.forEach((l, i) => l.priority = i + 1);
         syncLayeredConfigJSON();
+        applyPreset(false);
         renderLayeredEditor(container);
       });
       header.appendChild(btnUp);
@@ -1611,6 +1625,7 @@ function renderLayeredEditor(container) {
         layeredConfig[idx + 1] = temp;
         layeredConfig.forEach((l, i) => l.priority = i + 1);
         syncLayeredConfigJSON();
+        applyPreset(false);
         renderLayeredEditor(container);
       });
       header.appendChild(btnDown);
@@ -1625,6 +1640,7 @@ function renderLayeredEditor(container) {
         layeredConfig.splice(idx, 1);
         layeredConfig.forEach((l, i) => l.priority = i + 1);
         syncLayeredConfigJSON();
+        applyPreset(false);
         renderLayeredEditor(container);
       });
       header.appendChild(btnDel);
@@ -1646,6 +1662,7 @@ function renderLayeredEditor(container) {
         layer.opacity = val;
         text.textContent = e.target.value + '%';
         syncLayeredConfigJSON();
+        debouncedApplyPreset();
       });
       card.appendChild(opRow);
 
@@ -1676,6 +1693,7 @@ function renderLayeredEditor(container) {
               select.addEventListener('change', e => {
                 layer.parameters[p.name] = parseFloat(e.target.value);
                 syncLayeredConfigJSON();
+                debouncedApplyPreset();
               });
             } else if (p.param_type.type === 'Color') {
               const val = layer.parameters[p.name] || p.param_type;
@@ -1690,6 +1708,7 @@ function renderLayeredEditor(container) {
                 const [r, g, b] = hexToRgb(e.target.value);
                 layer.parameters[p.name] = { r, g, b };
                 syncLayeredConfigJSON();
+                debouncedApplyPreset();
               });
             } else {
               // Float
@@ -1708,6 +1727,7 @@ function renderLayeredEditor(container) {
                 layer.parameters[p.name] = v;
                 valText.textContent = v.toFixed(p.step < 0.1 ? 2 : p.step < 1 ? 1 : 0);
                 syncLayeredConfigJSON();
+                debouncedApplyPreset();
               });
             }
             subParams.appendChild(row);
@@ -1741,6 +1761,25 @@ function getDefaultParams(presetName) {
   return params;
 }
 
+function getTweakedOrDefaultParams(presetName) {
+  const p = presets.find(pr => pr.name === presetName);
+  if (!p) return {};
+  const params = {};
+  const tweaks = presetTweaks[presetName] || {};
+  p.parameters.forEach(param => {
+    if (tweaks[param.name] !== undefined) {
+      params[param.name] = tweaks[param.name].value;
+    } else {
+      if (param.param_type.type === 'Color') {
+        params[param.name] = { r: param.param_type.r, g: param.param_type.g, b: param.param_type.b };
+      } else {
+        params[param.name] = param.default;
+      }
+    }
+  });
+  return params;
+}
+
 function addLayer(presetName) {
   const meta = presets.find(p => p.name === presetName);
   if (!meta) return;
@@ -1749,10 +1788,11 @@ function addLayer(presetName) {
     display_name: meta.display_name,
     opacity: 1.0,
     priority: layeredConfig.length + 1,
-    parameters: getDefaultParams(presetName)
+    parameters: getTweakedOrDefaultParams(presetName)
   };
   layeredConfig.push(layer);
   syncLayeredConfigJSON();
+  applyPreset(false);
   renderLayeredEditor(document.getElementById('customParamsArea'));
 }
 
@@ -1768,7 +1808,7 @@ function syncLayeredConfigJSON() {
 }
 
 // ─── Apply preset ─────────────────────────────────────────────────────────────
-document.getElementById('applyBtn').addEventListener('click', applyPreset);
+document.getElementById('applyBtn').addEventListener('click', () => applyPreset(true));
 
 document.getElementById('resetBtn').addEventListener('click', () => {
   if (!selectedPreset) return;
@@ -1787,10 +1827,11 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   }
   
   renderParams(selectedPreset);
+  applyPreset(false);
   toast(`↺ Parameters reset to defaults`, 'ok');
 });
 
-async function applyPreset() {
+async function applyPreset(showToast = true) {
   if (!selectedPreset) return;
 
   const params = {};
@@ -1801,7 +1842,9 @@ async function applyPreset() {
   try {
     const res = await api('POST', '/api/preset', { preset: selectedPreset.name, params });
     if (res.ok) {
-      toast(`✦ ${selectedPreset.display_name} activated`, 'ok');
+      if (showToast) {
+        toast(`✦ ${selectedPreset.display_name} activated`, 'ok');
+      }
       
       if (!presetTweaks[selectedPreset.name]) {
         presetTweaks[selectedPreset.name] = {};
@@ -1809,6 +1852,8 @@ async function applyPreset() {
       for (const [k, v] of Object.entries(params)) {
         if (v && typeof v === 'object' && v.r !== undefined) {
           presetTweaks[selectedPreset.name][k] = { type: 'Color', value: v };
+        } else if (typeof v === 'string') {
+          presetTweaks[selectedPreset.name][k] = { type: 'String', value: v };
         } else {
           presetTweaks[selectedPreset.name][k] = { type: 'Float', value: v };
         }
