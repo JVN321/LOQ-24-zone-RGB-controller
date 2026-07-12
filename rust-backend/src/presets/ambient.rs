@@ -300,6 +300,91 @@ mod dxgi {
         }
     }
 
+    unsafe fn dominant_color_in_zone_raw(
+        data: *const u8,
+        pitch: usize,
+        width: usize,
+        height: usize,
+        start_x: usize,
+        end_x:   usize,
+        start_y: usize,
+        end_y:   usize,
+    ) -> RgbF {
+        const QUANT: usize = 8;
+        const BUCKETS: usize = 32; // 256 / 8
+
+        let mut counts = [0u32; BUCKETS * BUCKETS * BUCKETS];
+
+        let band_w = (end_x - start_x).max(1);
+        let band_h = (end_y - start_y).max(1);
+        let x_step = (band_w / 16).max(1);
+        let y_step = (band_h / 16).max(1);
+
+        for sy in (start_y..end_y).step_by(y_step) {
+            let sy_clamped = sy.min(height - 1);
+            for sx in (start_x..end_x).step_by(x_step) {
+                let sx_clamped = sx.min(width - 1);
+                let p = data.add(sy_clamped * pitch + sx_clamped * 4);
+                // BGRA format: B is at index 0, G is at index 1, R is at index 2
+                let ri = (*p.add(2) as usize) / QUANT;
+                let gi = (*p.add(1) as usize) / QUANT;
+                let bi = (*p.add(0) as usize) / QUANT;
+                counts[ri * BUCKETS * BUCKETS + gi * BUCKETS + bi] += 1;
+            }
+        }
+
+        let mut best_non_black_idx = None;
+        let mut best_non_black_count = 0;
+        let mut best_overall_idx = 0;
+        let mut best_overall_count = 0;
+
+        for (idx, &count) in counts.iter().enumerate() {
+            if count == 0 {
+                continue;
+            }
+            if count > best_overall_count {
+                best_overall_count = count;
+                best_overall_idx = idx;
+            }
+
+            let ri = idx / (BUCKETS * BUCKETS);
+            let gi = (idx / BUCKETS) % BUCKETS;
+            let bi = idx % BUCKETS;
+
+            let r = ri as f32 / 31.0;
+            let g = gi as f32 / 31.0;
+            let b = bi as f32 / 31.0;
+
+            let max = r.max(g).max(b);
+            let min = r.min(g).min(b);
+            let chroma = max - min;
+
+            // Classify as black or dark/desaturated gray:
+            // - max < 0.12: Very dark pixels (black / dark gray)
+            // - chroma < 0.15 && max < 0.5: Grayscale/desaturated backgrounds (middle dark grays)
+            let is_black_or_gray = max < 0.12 || (chroma < 0.15 && max < 0.5);
+
+            if !is_black_or_gray {
+                if count > best_non_black_count {
+                    best_non_black_count = count;
+                    best_non_black_idx = Some(idx);
+                }
+            }
+        }
+
+        let best_idx = best_non_black_idx.unwrap_or(best_overall_idx);
+
+        let ri = best_idx / (BUCKETS * BUCKETS);
+        let gi = (best_idx / BUCKETS) % BUCKETS;
+        let bi = best_idx % BUCKETS;
+
+        RgbF {
+            r: (ri as f32 + 0.5) * QUANT as f32 / 255.0,
+            g: (gi as f32 + 0.5) * QUANT as f32 / 255.0,
+            b: (bi as f32 + 0.5) * QUANT as f32 / 255.0,
+        }
+    }
+
     impl ScreenSampler for DxgiScreenSampler {
         fn sample(&mut self, out: &mut [[RgbF; AMBIENT_HEIGHT]; AMBIENT_WIDTH]) -> bool {
             unsafe {
@@ -330,34 +415,27 @@ mod dxgi {
                     let region_top = (self.height as f32 * self.rect_y) as usize;
                     let region_width = ((self.width as f32) * self.rect_width).max(1.0) as usize;
                     let region_height = ((self.height as f32) * self.rect_height).max(1.0) as usize;
+                    let region_end_y = (region_top + region_height).min(self.height as usize);
 
                     let col_width = region_width as f32 / AMBIENT_WIDTH as f32;
                     for x in 0..AMBIENT_WIDTH {
                         let start_x = (region_left as f32 + x as f32 * col_width) as usize;
                         let end_x = (region_left as f32 + (x + 1) as f32 * col_width) as usize;
                         let end_x = end_x.max(start_x + 1).min(self.width as usize);
-                        let count = (end_x - start_x) as f32;
+
+                        let dominant = dominant_color_in_zone_raw(
+                            data,
+                            pitch,
+                            self.width as usize,
+                            self.height as usize,
+                            start_x,
+                            end_x,
+                            region_top,
+                            region_end_y,
+                        );
 
                         for y in 0..AMBIENT_HEIGHT {
-                            let sy = region_top + y * region_height / AMBIENT_HEIGHT;
-                            let sy = sy.min(self.height as usize - 1);
-                            
-                            let mut r_sum = 0.0;
-                            let mut g_sum = 0.0;
-                            let mut b_sum = 0.0;
-
-                            for sx in start_x..end_x {
-                                let p = data.add(sy * pitch + sx * 4);
-                                b_sum += *p.add(0) as f32 / 255.0;
-                                g_sum += *p.add(1) as f32 / 255.0;
-                                r_sum += *p.add(2) as f32 / 255.0;
-                            }
-
-                            out[x][y] = RgbF {
-                                r: r_sum / count,
-                                g: g_sum / count,
-                                b: b_sum / count,
-                            };
+                            out[x][y] = dominant;
                         }
                     }
 
@@ -488,12 +566,47 @@ mod linux_sampler {
             }
         }
 
-        let best_idx = counts
-            .iter()
-            .enumerate()
-            .max_by_key(|(_, &c)| c)
-            .map(|(i, _)| i)
-            .unwrap_or(0);
+        let mut best_non_black_idx = None;
+        let mut best_non_black_count = 0;
+        let mut best_overall_idx = 0;
+        let mut best_overall_count = 0;
+
+        for (idx, &count) in counts.iter().enumerate() {
+            if count == 0 {
+                continue;
+            }
+            if count > best_overall_count {
+                best_overall_count = count;
+                best_overall_idx = idx;
+            }
+
+            let ri = idx / (BUCKETS * BUCKETS);
+            let gi = (idx / BUCKETS) % BUCKETS;
+            let bi = idx % BUCKETS;
+
+            // Convert to 0.0 - 1.0 scale
+            let r = ri as f32 / 31.0;
+            let g = gi as f32 / 31.0;
+            let b = bi as f32 / 31.0;
+
+            let max = r.max(g).max(b);
+            let min = r.min(g).min(b);
+            let chroma = max - min;
+
+            // Classify as black or dark/desaturated gray:
+            // - max < 0.12: Very dark pixels (black / dark gray)
+            // - chroma < 0.15 && max < 0.5: Grayscale/desaturated backgrounds (middle dark grays)
+            let is_black_or_gray = max < 0.12 || (chroma < 0.15 && max < 0.5);
+
+            if !is_black_or_gray {
+                if count > best_non_black_count {
+                    best_non_black_count = count;
+                    best_non_black_idx = Some(idx);
+                }
+            }
+        }
+
+        let best_idx = best_non_black_idx.unwrap_or(best_overall_idx);
 
         let ri = best_idx / (BUCKETS * BUCKETS);
         let gi = (best_idx / BUCKETS) % BUCKETS;

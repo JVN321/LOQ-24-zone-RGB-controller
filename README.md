@@ -4,6 +4,12 @@
 
 A lightweight, native high-performance Linux port/controller for managing 24 independent RGB zones on Lenovo LOQ devices. This project features a high-performance background daemon and a premium Axum-powered Web Server with a responsive, glassmorphic UI.
 
+### 🎹 Keyboard Zone Layout
+
+Here is the physical layout of the 24 RGB zones across the keyboard:
+
+![Keyboard Zone Layout](rgb-server/static/layout.png)
+
 ## ✨ Features
 
 - **Granular Control:** 24 RGB zones with independent control.

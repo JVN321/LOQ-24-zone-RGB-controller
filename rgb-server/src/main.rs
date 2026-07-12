@@ -146,6 +146,14 @@ async fn serve_ui() -> impl IntoResponse {
     Html(include_str!("../static/index.html"))
 }
 
+/// GET /static/layout.png — serve the keyboard layout PNG image
+async fn serve_layout() -> impl IntoResponse {
+    (
+        [("content-type", "image/png")],
+        include_bytes!("../static/layout.png").to_vec(),
+    )
+}
+
 /// GET /api/status
 async fn get_status(State(app): State<AppState>) -> impl IntoResponse {
     let s = app.ctrl.lock().unwrap();
@@ -350,6 +358,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(serve_ui))
+        .route("/static/layout.png", get(serve_layout))
         .route("/api/status", get(get_status))
         .route("/api/presets", get(get_presets))
         .route("/api/preset", post(set_preset))

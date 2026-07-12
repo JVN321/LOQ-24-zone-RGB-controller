@@ -243,42 +243,107 @@
     }
 
     .keyboard-viz {
-      display: flex;
-      gap: 5px;
-      align-items: center;
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      margin: 0 auto;
+      aspect-ratio: 1280/480;
       background: #050409;
-      padding: 12px;
       border-radius: 10px;
       border: 1px solid rgba(255, 255, 255, 0.04);
-      box-shadow: inset 0 4px 20px rgba(0, 0, 0, 0.9);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      margin-bottom: 24px;
+      overflow: visible;
+    }
+
+    .keyboard-viz::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: url('/static/layout.png') no-repeat center;
+      background-size: contain;
+      filter: invert(1) brightness(1.6); /* Inverts black outlines to glowing white outlines! */
+      opacity: 0.28; /* Subtle keyboard outlines */
+      pointer-events: none;
+      z-index: 1;
+      border-radius: 9px;
+    }
+
+    /* Blurred container for soft color transitions */
+    .zone-glow-container {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      overflow: hidden;
+      border-radius: 9px;
+      pointer-events: none;
+      filter: blur(14px); /* Fades boundaries between zones! */
+      mix-blend-mode: screen;
+      opacity: 0.65;
+    }
+
+    .zone-glow {
+      position: absolute;
+      top: 0; bottom: 0;
+      transition: background 0.08s ease;
+    }
+
+    /* Sharp interactive layer for hover, selection, and labels */
+    .zone-interactive-container {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      border-radius: 9px;
+      z-index: 5;
     }
 
     .zone-bar {
-      flex: 1;
-      height: 38px;
-      border-radius: 5px;
-      background: #0e0d16;
-      transition: background 0.08s ease;
-      position: relative;
-      cursor: default;
-      box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.05);
+      position: absolute;
+      top: 0; bottom: 0;
+      cursor: crosshair;
+      border-left: 1px dashed rgba(255, 255, 255, 0.02);
+      border-right: 1px dashed rgba(255, 255, 255, 0.02);
+      transition: all 0.15s ease;
+      z-index: 2;
+    }
+
+    /* Subtle visibility of zone boundaries on hover */
+    .zone-bar:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-left-color: rgba(255, 255, 255, 0.15);
+      border-right-color: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Selection styling in Static Color mode */
+    .zone-bar.selected {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1.5px solid rgba(255, 255, 255, 0.6);
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+      z-index: 6;
     }
 
     .zone-bar::after {
       content: attr(data-zone);
       position: absolute;
-      bottom: -16px;
+      bottom: -20px;
       left: 50%; transform: translateX(-50%);
-      font-size: 8px;
+      font-size: 9px;
+      font-weight: 600;
       color: var(--text-muted);
       font-family: 'JetBrains Mono', monospace;
+      z-index: 7;
+      pointer-events: none;
+    }
+
+    /* Highlight zone numbers for selected zones */
+    .zone-bar.selected::after {
+      color: #ffffff;
+      text-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
     }
 
     /* Parameters Panel */
     .params-panel {
       padding: 20px 24px;
       flex: 1;
-      overflow-y: auto;
+      overflow: hidden;
       min-height: 0;
       display: flex;
       flex-direction: column;
@@ -726,7 +791,7 @@
         <h2 id="paramPresetName">Select an effect</h2>
         <p id="paramPresetDesc">Choose a lighting layout from the list on the left.</p>
       </div>
-      <div id="customParamsArea" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+      <div id="customParamsArea" style="flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; padding-right: 8px; margin-bottom: 12px;">
         <div class="params-grid" id="paramsGrid"></div>
       </div>
       <div class="apply-bar" id="applyBar" style="display: none;">
@@ -771,21 +836,58 @@ window.addEventListener('DOMContentLoaded', async () => {
 // ─── Keyboard viz ────────────────────────────────────────────────────────────
 function buildKeyboard() {
   const viz = document.getElementById('keyboardViz');
-  viz.innerHTML = '';
+  viz.innerHTML = `
+    <div class="zone-glow-container" id="zoneGlowContainer"></div>
+    <div class="zone-interactive-container" id="zoneInteractiveContainer"></div>
+  `;
+  
+  const glowContainer = document.getElementById('zoneGlowContainer');
+  const interactiveContainer = document.getElementById('zoneInteractiveContainer');
+  
   for (let i = 0; i < 24; i++) {
+    // 1. Glow element (blurred visual overlay)
+    const glow = document.createElement('div');
+    glow.className = 'zone-glow';
+    glow.dataset.zone = i;
+    glow.style.left = `${(i * 100) / 24}%`;
+    glow.style.width = `${100 / 24}%`;
+    glowContainer.appendChild(glow);
+    
+    // 2. Interactive bar element (sharp click/drag overlay)
     const bar = document.createElement('div');
     bar.className = 'zone-bar';
-    bar.dataset.zone = i;
-    bar.title = `Zone ${i}`;
-    viz.appendChild(bar);
+    bar.dataset.zone = i + 1; // 1-based indexing for user interface
+    bar.title = `Zone ${i + 1}`;
+    bar.style.left = `${(i * 100) / 24}%`;
+    bar.style.width = `${100 / 24}%`;
+    
+    // Wire up drag-to-select directly on the layout image!
+    bar.addEventListener('mousedown', (e) => {
+      if (selectedPreset && selectedPreset.name === 'staticColor') {
+        isMouseDown = true;
+        e.preventDefault();
+        toggleZoneSelection(i, bar);
+      }
+    });
+    
+    bar.addEventListener('mouseenter', () => {
+      if (isMouseDown && selectedPreset && selectedPreset.name === 'staticColor') {
+        toggleZoneSelection(i, bar);
+      }
+    });
+    
+    interactiveContainer.appendChild(bar);
   }
 }
-
 function updateFrame(zones) {
-  const bars = document.querySelectorAll('.zone-bar');
+  const glows = document.querySelectorAll('.zone-glow');
   zones.forEach(([r, g, b], i) => {
-    if (bars[i]) {
-      bars[i].style.background = `rgb(${r},${g},${b})`;
+    if (glows[i]) {
+      if (r === 0 && g === 0 && b === 0) {
+        glows[i].style.background = 'transparent';
+      } else {
+        glows[i].style.background = `rgb(${r},${g},${b})`;
+      }
     }
   });
 }
@@ -880,6 +982,12 @@ function selectPreset(preset) {
   selectedPreset = preset;
   paramValues = {};
   highlightActive(preset.name);
+  
+  // Clear layout selection states when switching presets
+  selectedStaticZones.clear();
+  document.querySelectorAll('.zone-bar').forEach(bar => {
+    bar.classList.remove('selected');
+  });
   
   const tweaks = presetTweaks[preset.name];
   if (tweaks) {
@@ -1242,38 +1350,26 @@ function renderAmbientEditor(container) {
 
 // ─── 24-Zone Static Color Palette Editor ──────────────────────────────────────
 function renderStaticColorEditor(container) {
+  // Reset selection
   selectedStaticZones.clear();
+  document.querySelectorAll('.zone-bar').forEach(bar => {
+    bar.classList.remove('selected');
+  });
 
   const editorCard = document.createElement('div');
   editorCard.className = 'zone-editor-container';
 
-  // Build grid representation of the 24 zones
-  const grid = document.createElement('div');
-  grid.className = 'zone-editor-grid';
-  
-  for (let i = 0; i < 24; i++) {
-    const cell = document.createElement('div');
-    cell.className = 'zone-editor-cell';
-    cell.dataset.index = i;
-    cell.textContent = i + 1;
-    const c = staticColors[i];
-    cell.style.background = `rgb(${c.r}, ${c.g}, ${c.b})`;
-    
-    // Drag-to-select support
-    cell.addEventListener('mousedown', (e) => {
-      isMouseDown = true;
-      e.preventDefault();
-      toggleZoneSelection(i, cell);
-    });
-    cell.addEventListener('mouseenter', () => {
-      if (isMouseDown) {
-        toggleZoneSelection(i, cell);
-      }
-    });
-    grid.appendChild(cell);
-  }
-  
-  editorCard.appendChild(grid);
+  // Instruction text explaining direct editing
+  const instructions = document.createElement('div');
+  instructions.style.fontSize = '12px';
+  instructions.style.color = 'var(--text-muted)';
+  instructions.style.marginBottom = '16px';
+  instructions.style.textAlign = 'center';
+  instructions.innerHTML = `
+    <span style="color: var(--primary); font-weight: 600;">Direct Layout Editing:</span> 
+    Click or drag over the zones on the keyboard layout above to select them, then use the controls below to colorize.
+  `;
+  editorCard.appendChild(instructions);
 
   // Controls row
   const controls = document.createElement('div');
@@ -1300,29 +1396,29 @@ function renderStaticColorEditor(container) {
 
   // Wire up action listeners
   controls.querySelector('#btnStaticSelectAll').addEventListener('click', () => {
-    const cells = grid.querySelectorAll('.zone-editor-cell');
-    cells.forEach((cell, idx) => {
+    const bars = document.querySelectorAll('.zone-bar');
+    bars.forEach((bar, idx) => {
       selectedStaticZones.add(idx);
-      cell.classList.add('selected');
+      bar.classList.add('selected');
     });
   });
 
   controls.querySelector('#btnStaticInvert').addEventListener('click', () => {
-    const cells = grid.querySelectorAll('.zone-editor-cell');
-    cells.forEach((cell, idx) => {
+    const bars = document.querySelectorAll('.zone-bar');
+    bars.forEach((bar, idx) => {
       if (selectedStaticZones.has(idx)) {
         selectedStaticZones.delete(idx);
-        cell.classList.remove('selected');
+        bar.classList.remove('selected');
       } else {
         selectedStaticZones.add(idx);
-        cell.classList.add('selected');
+        bar.classList.add('selected');
       }
     });
   });
 
   controls.querySelector('#btnStaticClear').addEventListener('click', () => {
-    const cells = grid.querySelectorAll('.zone-editor-cell');
-    cells.forEach(cell => cell.classList.remove('selected'));
+    const bars = document.querySelectorAll('.zone-bar');
+    bars.forEach(bar => bar.classList.remove('selected'));
     selectedStaticZones.clear();
   });
 
@@ -1333,8 +1429,6 @@ function renderStaticColorEditor(container) {
     
     selectedStaticZones.forEach(idx => {
       staticColors[idx] = { r, g, b };
-      const cell = grid.querySelector(`.zone-editor-cell[data-index="${idx}"]`);
-      if (cell) cell.style.background = e.target.value;
     });
     syncStaticValues();
   });
@@ -1363,8 +1457,6 @@ function renderStaticColorEditor(container) {
       const g = Math.round(startRgb[1] + (endRgb[1] - startRgb[1]) * t);
       const b = Math.round(startRgb[2] + (endRgb[2] - startRgb[2]) * t);
       staticColors[idx] = { r, g, b };
-      const cell = grid.querySelector(`.zone-editor-cell[data-index="${idx}"]`);
-      if (cell) cell.style.background = rgbToHex(r, g, b);
     });
     syncStaticValues();
   });
@@ -1382,10 +1474,44 @@ function toggleZoneSelection(idx, cell) {
   }
 }
 
+let applyPresetTimeout = null;
+let lastApplyPresetTime = 0;
+
+function debouncedApplyPreset() {
+  if (!selectedPreset || selectedPreset.name !== 'staticColor') return;
+  const now = Date.now();
+  const timeSinceLast = now - lastApplyPresetTime;
+  
+  if (applyPresetTimeout) {
+    clearTimeout(applyPresetTimeout);
+    applyPresetTimeout = null;
+  }
+  
+  if (timeSinceLast >= 50) { // Max 20 updates per second to protect the hardware
+    lastApplyPresetTime = now;
+    applyPreset();
+  } else {
+    applyPresetTimeout = setTimeout(() => {
+      lastApplyPresetTime = Date.now();
+      applyPreset();
+    }, 50 - timeSinceLast);
+  }
+}
+
 function syncStaticValues() {
+  const glows = document.querySelectorAll('.zone-glow');
   for (let i = 0; i < 24; i++) {
     paramValues[`color${i + 1}`] = staticColors[i];
+    if (glows[i]) {
+      const c = staticColors[i];
+      if (c.r === 0 && c.g === 0 && c.b === 0) {
+        glows[i].style.background = 'transparent';
+      } else {
+        glows[i].style.background = `rgb(${c.r}, ${c.g}, ${c.b})`;
+      }
+    }
   }
+  debouncedApplyPreset();
 }
 
 // ─── Layered Effect Builder Editor ───────────────────────────────────────────
