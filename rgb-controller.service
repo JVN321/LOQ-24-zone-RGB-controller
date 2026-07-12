@@ -3,8 +3,8 @@ Description=Lenovo LOQ RGB Controller Daemon
 After=graphical-session.target
 
 [Service]
-# Points to the compiled release binary
-ExecStart=%h/.local/bin/rgb-server
+# Points to the wrapper script that dynamically sets up the Wayland environment
+ExecStart=%h/.local/bin/rgb-server-wrapper.sh
 Restart=always
 RestartSec=3
 

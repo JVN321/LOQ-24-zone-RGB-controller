@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 const VID: u16 = 0x048d;
 const PID: u16 = 0xc693;
 pub const NUM_ZONES: usize = 24;
-const PACKET_SIZE: usize = 65; // HID report size (64 + 1 for report ID)
 
 
 #[repr(C)]
@@ -123,28 +122,6 @@ impl LedController {
 
     /// Connect to the RGB keyboard controller with custom VID/PID (interface 1)
     pub fn connect_device(&mut self, vid: u16, pid: u16) -> Result<(), String> {
-        #[cfg(target_os = "linux")]
-        {
-            // Kill any other running instances of rgb-server to release the HID device
-            use sysinfo::System;
-            let mut sys = System::new();
-            sys.refresh_all();
-            let my_pid = std::process::id();
-            let mut killed_any = false;
-            for (pid, process) in sys.processes() {
-                if process.name() == "rgb-server" {
-                    let pid_val = pid.to_string().parse::<u32>().unwrap_or(0);
-                    if pid_val != my_pid && pid_val != 0 {
-                        println!("[LedController] Stopping existing stale instance (PID {})...", pid_val);
-                        process.kill();
-                        killed_any = true;
-                    }
-                }
-            }
-            if killed_any {
-                std::thread::sleep(std::time::Duration::from_millis(200));
-            }
-        }
 
         let api = HidApi::new().map_err(|e| e.to_string())?;
         
@@ -271,7 +248,7 @@ impl LedController {
             // Compute perceptually-scaled color for the device/UI (do NOT replace logical buffer)
             let scaled = color.perceptual_scale(self.brightness);
             
-            let mut buf = vec![
+            let buf = vec![
                 0x05,     // Command: Vendor lighting
                 0x01,     // Subcommand: Zone range RGB
                 start,    // Start zone index
@@ -283,7 +260,6 @@ impl LedController {
                 scaled.b,  // Blue (0-255)
                 0x01,     // Apply/Commit (1 = apply immediately)
             ];
-            buf.resize(PACKET_SIZE, 0);
             if let Err(e) = device.send_feature_report(&buf) {
                 self.device = None;
                 return Err(e.to_string());
@@ -345,7 +321,6 @@ impl LedController {
             buf.push(color.b);  // Blue
             buf.push(0x01);     // Color commit bit
         }
-        buf.resize(PACKET_SIZE, 0);
         if let Err(e) = device.send_feature_report(&buf) {
             self.device = None;
             return Err(e.to_string());
@@ -423,11 +398,10 @@ impl LedController {
     /// Setting this to false allows the host to drive custom per-zone colors.
     pub fn set_autonomous_mode(&mut self, autonomous: bool) -> Result<(), String> {
         let device = self.device.as_ref().ok_or("Not connected")?;
-        let mut buf = vec![
+        let buf = vec![
             0x06, // Report ID 6 (LampArrayControlReport)
             if autonomous { 0x01 } else { 0x00 }, // 0x01 = autonomous, 0x00 = host-controlled
         ];
-        buf.resize(PACKET_SIZE, 0);
         if let Err(e) = device.send_feature_report(&buf) {
             self.device = None;
             return Err(e.to_string());

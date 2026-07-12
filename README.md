@@ -114,6 +114,63 @@ sudo usermod -aG input $USER
 
 ---
 
+## ⚙️ Running on Startup (systemd)
+
+To automatically start the RGB controller daemon on user login under systemd:
+
+1. **Install the Binary:**
+   Copy the compiled binary to your local bin path:
+   ```bash
+   mkdir -p ~/.local/bin
+   cp target/release/rgb-server ~/.local/bin/
+   ```
+
+2. **Install the Service File:**
+   Copy the provided service file to your systemd user configuration directory:
+   ```bash
+   mkdir -p ~/.config/systemd/user
+   cp rgb-controller.service ~/.config/systemd/user/
+   ```
+
+3. **Enable and Start the Service:**
+   Reload systemd, enable the service, and start it immediately:
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user enable rgb-controller.service
+   systemctl --user start rgb-controller.service
+   ```
+
+4. **Useful Service Management Commands:**
+   ```bash
+   # Check status and verify it is active/running
+   systemctl --user status rgb-controller.service
+
+   # View live logging output
+   journalctl --user -u rgb-controller.service -f
+
+   # Restart the controller service
+   systemctl --user restart rgb-controller.service
+   ```
+
+---
+
+## 🔍 Troubleshooting & Recovery
+
+### 1. What is Autonomous Mode?
+Under the Microsoft HID LampArray specification, **Autonomous Mode** (controlled by Report ID `0x06`) dictates who controls the keyboard's LEDs:
+- **Enabled (`0x01`)**: The keyboard's internal firmware controls the lighting animations (like the default hardware color waves).
+- **Disabled (`0x00`)**: The keyboard firmware halts built-in animations and hands full authority to the host system (our `rgb-server`) to update individual keys/zones via Reports `0x04`/`0x05`.
+
+### 2. Microcontroller Recovery from Upgrade Mode (`048d:89db`)
+If the ITE Tech keyboard controller receives malformed packets (e.g. unpadded feature reports), it may crash and drop into its fallback bootloader/firmware upgrade state, displaying as `048d:89db ITE Upgrade Mode` in `lsusb`. 
+
+Because motherboard standby lines keep USB VBUS powered even during soft reboots, the chip stays in bootloader mode. To reset it back to Normal Mode (`c693`):
+1. **Shut down the laptop completely.**
+2. **Unplug the power adapter for 5–10 seconds** to cut VBUS standby power and completely discharge the motherboard capacitors.
+3. **Power the laptop back on.** The keyboard controller will cold-boot back into normal operating mode, and the systemd daemon will automatically take control on login.
+
+---
+
 ## 🏗️ Architecture Overview
 
 - **Frontend (UI):** Embedded HTML/CSS/JS page (`rgb-server/static/index.html`) using modern WebSockets and JSON REST API bindings for real-time visualization and settings adjustment.
