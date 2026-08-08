@@ -463,10 +463,16 @@ mod linux_sampler {
     /// Returns raw RGBA bytes and (width, height) on success.
     fn capture_with_grim() -> Option<(ImageBuffer<Rgba<u8>, Vec<u8>>, u32, u32)> {
         // Write PNG to stdout, read it back in memory — no temp file needed.
-        let output = std::process::Command::new("grim")
+        let output = match std::process::Command::new("grim")
             .args(["-t", "png", "-"])
-            .output()
-            .ok()?;
+            .output() 
+        {
+            Ok(out) => out,
+            Err(e) => {
+                eprintln!("⚠️  grim execution failed: {}", e);
+                return None;
+            }
+        };
 
         if !output.status.success() || output.stdout.is_empty() {
             eprintln!(
@@ -477,9 +483,13 @@ mod linux_sampler {
             return None;
         }
 
-        let img = xcap::image::load_from_memory_with_format(&output.stdout, xcap::image::ImageFormat::Png)
-            .ok()?
-            .into_rgba8();
+        let img = match xcap::image::load_from_memory_with_format(&output.stdout, xcap::image::ImageFormat::Png) {
+            Ok(val) => val.into_rgba8(),
+            Err(e) => {
+                eprintln!("⚠️  Failed to decode grim PNG stdout: {}", e);
+                return None;
+            }
+        };
         let w = img.width();
         let h = img.height();
         Some((img, w, h))

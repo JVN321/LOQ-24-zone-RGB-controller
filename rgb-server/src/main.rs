@@ -314,22 +314,28 @@ async fn main() {
 
     controller.set_brightness(cfg.brightness_level);
 
-    let last_preset = cfg.current_preset.clone();
+    let last_preset = if cfg.current_preset.is_empty() {
+        "rainbowwave".to_string()
+    } else {
+        cfg.current_preset.clone()
+    };
     let last_tweaks = cfg.preset_tweaks.get(&last_preset).cloned().unwrap_or_default();
 
-    let initial_effect = if !last_preset.is_empty() {
-        match rgb_backend::build_effect(&last_preset, last_tweaks.clone()) {
-            Ok(mut eff) => {
-                eff.start();
-                Some(eff)
-            }
-            Err(e) => {
-                eprintln!("⚠️  Failed to restore startup preset '{}': {}", last_preset, e);
-                None
+    let initial_effect = match rgb_backend::build_effect(&last_preset, last_tweaks.clone()) {
+        Ok(mut eff) => {
+            eff.start();
+            Some(eff)
+        }
+        Err(e) => {
+            eprintln!("⚠️  Failed to restore startup preset '{}': {}. Falling back to rainbowwave...", last_preset, e);
+            match rgb_backend::build_effect("rainbowwave", std::collections::HashMap::new()) {
+                Ok(mut eff) => {
+                    eff.start();
+                    Some(eff)
+                }
+                Err(_) => None,
             }
         }
-    } else {
-        None
     };
 
     let ctrl_state = Arc::new(Mutex::new(ControllerState {
