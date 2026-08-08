@@ -6,9 +6,9 @@ A lightweight, native high-performance Linux daemon and web controller for manag
 
 ---
 
-## 🚀 Quick Start & Installation
+## Quick Start & Installation
 
-### ⚡ Option A: Automated 1-Step Installer (Recommended)
+### Option A: Automated 1-Step Installer (Recommended)
 
 Run the installer script — it automatically detects your Linux distribution (Arch, Fedora, Debian/Ubuntu), installs required system packages, sets up udev hardware permissions, compiles the workspace, and enables the systemd daemon:
 
@@ -22,13 +22,13 @@ Open your browser at **[http://127.0.0.1:7070](http://127.0.0.1:7070)**.
 
 ---
 
-### 🛠️ Option B: Manual Installation
+### Option B: Manual Installation
 
 #### 1. Install System Dependencies
 
 Select your Linux distribution to install required dependencies (HID drivers, PipeWire audio, Wayland/X11, Clang compiler):
 
-#### 📦 Arch Linux
+#### Arch Linux
 ```bash
 sudo pacman -S --needed \
     alsa-lib \
@@ -46,7 +46,7 @@ sudo pacman -S --needed \
     dbus
 ```
 
-#### 📦 Fedora (Workstation / Silverblue / Kinoite)
+#### Fedora (Workstation / Silverblue / Kinoite)
 ```bash
 sudo dnf install -y \
     alsa-lib-devel \
@@ -65,7 +65,7 @@ sudo dnf install -y \
     clang
 ```
 
-#### 📦 Debian / Ubuntu
+#### Debian / Ubuntu
 ```bash
 sudo apt-get update && sudo apt-get install -y \
     libasound2-dev \
@@ -155,7 +155,7 @@ systemctl --user restart rgb-controller.service
 
 ---
 
-## 🎹 Keyboard Zone Layout
+## Keyboard Zone Layout
 
 The Lenovo LOQ keyboard features 24 physical RGB zones across the keyboard:
 
@@ -163,14 +163,14 @@ The Lenovo LOQ keyboard features 24 physical RGB zones across the keyboard:
 
 ---
 
-## ✨ Features & Supported Effects
+## Features & Supported Effects
 
 - **24 Granular RGB Zones:** Independent color and animation control per zone.
 - **High Performance:** Low-latency updates up to 60 FPS driven directly by Rust.
 - **Favorites & Preset Cycle:** Star your favorite lighting presets in the Web UI and cycle through them globally using a custom assignable hotkey (Default: `Alt+P`).
 - **Direct USB HID Control:** Native LampArray protocol communication with zero bloatware.
 
-### 🎨 Available Lighting Presets
+### Available Lighting Presets
 
 | Category | Presets |
 |---|---|
@@ -182,7 +182,7 @@ The Lenovo LOQ keyboard features 24 physical RGB zones across the keyboard:
 
 ---
 
-## 🔍 Troubleshooting & Recovery
+## Troubleshooting & Recovery
 
 ### 1. What is Autonomous Mode?
 Under the Microsoft HID LampArray specification, **Autonomous Mode** (Report ID `0x06`) toggles LED control authority:
@@ -199,7 +199,7 @@ Because USB VBUS standby lines remain powered even during soft reboots, the chip
 
 ---
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 - **Frontend (UI):** Embedded HTML5/CSS3/JS page (`rgb-server/static/index.html`) using WebSockets and REST API for real-time visualization and settings management.
 - **Server:** `rgb-server/` — Axum web server hosting REST endpoints and WebSocket frame broadcast hubs.
@@ -207,7 +207,7 @@ Because USB VBUS standby lines remain powered even during soft reboots, the chip
 
 ---
 
-## 🛠️ Creating Custom Effects
+## Creating Custom Effects
 
 You can implement customized static or dynamic effects using Rust:
 
@@ -221,6 +221,15 @@ You can implement customized static or dynamic effects using Rust:
 
 ---
 
-## 📜 License
+## Credits & Acknowledgments
+
+This project was initially based on and ported from the original Windows version by [DChitale](https://github.com/DChitale):
+- **Original Windows Repository:** [DChitale/LOQ-24-zone-RGB-controller](https://github.com/DChitale/LOQ-24-zone-RGB-controller)
+
+It was subsequently completely remade into a high-performance Linux native daemon and web interface. Special thanks to [DChitale](https://github.com/DChitale) for laying the initial groundwork for Lenovo LOQ 24-zone RGB keyboard control!
+
+---
+
+## License
 
 This project is licensed under the [MIT License](LICENSE).
