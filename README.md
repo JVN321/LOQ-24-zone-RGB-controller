@@ -8,7 +8,23 @@ A lightweight, native high-performance Linux daemon and web controller for manag
 
 ## 🚀 Quick Start & Installation
 
-### 1. Install System Dependencies
+### ⚡ Option A: Automated 1-Step Installer (Recommended)
+
+Run the installer script — it automatically detects your Linux distribution (Arch, Fedora, Debian/Ubuntu), installs required system packages, sets up udev hardware permissions, compiles the workspace, and enables the systemd daemon:
+
+```bash
+git clone https://github.com/JVN321/LOQ-24-zone-RGB-controller.git
+cd LOQ-24-zone-RGB-controller
+./install.sh
+```
+
+Open your browser at **[http://127.0.0.1:7070](http://127.0.0.1:7070)**.
+
+---
+
+### 🛠️ Option B: Manual Installation
+
+#### 1. Install System Dependencies
 
 Select your Linux distribution to install required dependencies (HID drivers, PipeWire audio, Wayland/X11, Clang compiler):
 
