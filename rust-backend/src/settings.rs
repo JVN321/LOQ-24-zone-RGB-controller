@@ -58,7 +58,7 @@ impl Default for AppSettings {
 fn default_brightness_level() -> f32 { 1.0 }
 fn default_ambient_sample_left() -> f32 { 0.0 }
 fn default_ambient_sample_width() -> f32 { 1.0 }
-fn default_preset_cycle_shortcut() -> Option<String> { None }
+fn default_preset_cycle_shortcut() -> Option<String> { Some("Alt+P".to_string()) }
 fn default_preset_cycle_effects() -> Vec<String> { Vec::new() }
 fn default_current_preset() -> String { "rainbowwave".to_string() }
 fn default_preset_tweaks() -> std::collections::HashMap<

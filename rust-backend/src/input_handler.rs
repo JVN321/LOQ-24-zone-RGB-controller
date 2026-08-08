@@ -1,32 +1,162 @@
 use once_cell::sync::Lazy;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use crate::settings;
 
 /// Queue of recently pressed keyboard zone indices (0-23).
 /// Effects like rainbow_ripple consume this to trigger visuals per-keypress.
 pub static KEY_EVENTS: Lazy<Mutex<Vec<u32>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
-// ─── Windows implementation (rdev + X11) ─────────────────────────────────────
+pub type CycleCallback = Arc<dyn Fn() + Send + Sync + 'static>;
+static CYCLE_CALLBACK: Lazy<Mutex<Option<CycleCallback>>> = Lazy::new(|| Mutex::new(None));
+
+pub fn set_cycle_callback<F>(cb: F)
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    if let Ok(mut lock) = CYCLE_CALLBACK.lock() {
+        *lock = Some(Arc::new(cb));
+    }
+}
+
+pub fn trigger_cycle_callback() {
+    if let Ok(lock) = CYCLE_CALLBACK.lock() {
+        if let Some(ref cb) = *lock {
+            cb();
+        }
+    }
+}
+
+// ─── Shortcut Parser ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+struct ParsedShortcut {
+    alt: bool,
+    ctrl: bool,
+    shift: bool,
+    meta: bool,
+    key: String,
+}
+
+fn parse_shortcut(s: &str) -> Option<ParsedShortcut> {
+    let parts: Vec<&str> = s.split('+').map(|p| p.trim()).collect();
+    if parts.is_empty() {
+        return None;
+    }
+    let mut alt = false;
+    let mut ctrl = false;
+    let mut shift = false;
+    let mut meta = false;
+    let mut key = String::new();
+
+    for part in parts {
+        match part.to_lowercase().as_str() {
+            "alt" => alt = true,
+            "ctrl" | "control" => ctrl = true,
+            "shift" => shift = true,
+            "meta" | "super" | "win" | "cmd" => meta = true,
+            k => key = k.to_string(),
+        }
+    }
+
+    if key.is_empty() {
+        return None;
+    }
+
+    Some(ParsedShortcut { alt, ctrl, shift, meta, key })
+}
+
+// Modifier state trackers
+static ALT_HELD: AtomicBool = AtomicBool::new(false);
+static CTRL_HELD: AtomicBool = AtomicBool::new(false);
+static SHIFT_HELD: AtomicBool = AtomicBool::new(false);
+static META_HELD: AtomicBool = AtomicBool::new(false);
+
+// ─── Windows implementation ──────────────────────────────────────────────────
 
 #[cfg(target_os = "windows")]
 pub fn start_key_listener() {
-    use rdev::{listen, Event, EventType};
+    use rdev::{listen, Event, EventType, Key};
 
     std::thread::spawn(|| {
         let callback = |event: Event| {
-            if let EventType::KeyPress(key) = event.event_type {
-                let zone = map_key_to_zone_win(key);
-                if let Ok(mut events) = KEY_EVENTS.lock() {
-                    events.push(zone);
-                    if events.len() > 10 {
-                        events.remove(0);
+            match event.event_type {
+                EventType::KeyPress(key) => {
+                    // Update modifiers
+                    match key {
+                        Key::Alt | Key::AltGr => ALT_HELD.store(true, Ordering::Relaxed),
+                        Key::ControlLeft | Key::ControlRight => CTRL_HELD.store(true, Ordering::Relaxed),
+                        Key::ShiftLeft | Key::ShiftRight => SHIFT_HELD.store(true, Ordering::Relaxed),
+                        Key::MetaLeft | Key::MetaRight => META_HELD.store(true, Ordering::Relaxed),
+                        _ => {}
+                    }
+
+                    // Check shortcut
+                    if let Ok(cfg) = settings::load_settings() {
+                        if let Some(ref shortcut_str) = cfg.preset_cycle_shortcut {
+                            if let Some(target) = parse_shortcut(shortcut_str) {
+                                if let Some(key_name) = map_rdev_key_name(key) {
+                                    if target.key.eq_ignore_ascii_case(&key_name)
+                                        && target.alt == ALT_HELD.load(Ordering::Relaxed)
+                                        && target.ctrl == CTRL_HELD.load(Ordering::Relaxed)
+                                        && target.shift == SHIFT_HELD.load(Ordering::Relaxed)
+                                        && target.meta == META_HELD.load(Ordering::Relaxed)
+                                    {
+                                        trigger_cycle_callback();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let zone = map_key_to_zone_win(key);
+                    if let Ok(mut events) = KEY_EVENTS.lock() {
+                        events.push(zone);
+                        if events.len() > 10 {
+                            events.remove(0);
+                        }
                     }
                 }
+                EventType::KeyRelease(key) => {
+                    match key {
+                        Key::Alt | Key::AltGr => ALT_HELD.store(false, Ordering::Relaxed),
+                        Key::ControlLeft | Key::ControlRight => CTRL_HELD.store(false, Ordering::Relaxed),
+                        Key::ShiftLeft | Key::ShiftRight => SHIFT_HELD.store(false, Ordering::Relaxed),
+                        Key::MetaLeft | Key::MetaRight => META_HELD.store(false, Ordering::Relaxed),
+                        _ => {}
+                    }
+                }
+                _ => {}
             }
         };
         if let Err(error) = listen(callback) {
             eprintln!("[input_handler] Key listener error: {:?}", error);
         }
     });
+}
+
+#[cfg(target_os = "windows")]
+fn map_rdev_key_name(key: rdev::Key) -> Option<String> {
+    use rdev::Key;
+    let s = match key {
+        Key::KeyA => "a", Key::KeyB => "b", Key::KeyC => "c", Key::KeyD => "d",
+        Key::KeyE => "e", Key::KeyF => "f", Key::KeyG => "g", Key::KeyH => "h",
+        Key::KeyI => "i", Key::KeyJ => "j", Key::KeyK => "k", Key::KeyL => "l",
+        Key::KeyM => "m", Key::KeyN => "n", Key::KeyO => "o", Key::KeyP => "p",
+        Key::KeyQ => "q", Key::KeyR => "r", Key::KeyS => "s", Key::KeyT => "t",
+        Key::KeyU => "u", Key::KeyV => "v", Key::KeyW => "w", Key::KeyX => "x",
+        Key::KeyY => "y", Key::KeyZ => "z",
+        Key::Num0 => "0", Key::Num1 => "1", Key::Num2 => "2", Key::Num3 => "3",
+        Key::Num4 => "4", Key::Num5 => "5", Key::Num6 => "6", Key::Num7 => "7",
+        Key::Num8 => "8", Key::Num9 => "9",
+        Key::F1 => "f1", Key::F2 => "f2", Key::F3 => "f3", Key::F4 => "f4",
+        Key::F5 => "f5", Key::F6 => "f6", Key::F7 => "f7", Key::F8 => "f8",
+        Key::F9 => "f9", Key::F10 => "f10", Key::F11 => "f11", Key::F12 => "f12",
+        Key::Space => "space",
+        _ => return None,
+    };
+    Some(s.to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -61,6 +191,8 @@ fn map_key_to_zone_win(key: rdev::Key) -> u32 {
     }
 }
 
+// ─── Linux implementation ────────────────────────────────────────────────────
+
 #[cfg(not(target_os = "windows"))]
 pub fn start_key_listener() {
     std::thread::spawn(|| {
@@ -73,7 +205,6 @@ pub fn start_key_listener() {
                         if filename.starts_with("event") {
                             if let Ok(device) = evdev::Device::open(&path) {
                                 if let Some(keys) = device.supported_keys() {
-                                    // A general keyboard device supports KEY_A
                                     if keys.contains(evdev::Key::KEY_A) {
                                         keyboard_paths.push(path);
                                     }
@@ -84,9 +215,9 @@ pub fn start_key_listener() {
                 }
             }
         }
-        
+
         eprintln!("[input_handler] Found {} keyboard devices to monitor.", keyboard_paths.len());
-        
+
         for path in keyboard_paths {
             std::thread::spawn(move || {
                 if let Ok(mut device) = evdev::Device::open(&path) {
@@ -95,8 +226,45 @@ pub fn start_key_listener() {
                             Ok(events) => {
                                 for event in events {
                                     if let evdev::InputEventKind::Key(key) = event.kind() {
-                                        // 1 = Press, 2 = Repeat (let's trigger on press: value == 1)
-                                        if event.value() == 1 {
+                                        let val = event.value();
+                                        
+                                        // Track modifier state
+                                        match key {
+                                            evdev::Key::KEY_LEFTALT | evdev::Key::KEY_RIGHTALT => {
+                                                ALT_HELD.store(val != 0, Ordering::Relaxed);
+                                            }
+                                            evdev::Key::KEY_LEFTCTRL | evdev::Key::KEY_RIGHTCTRL => {
+                                                CTRL_HELD.store(val != 0, Ordering::Relaxed);
+                                            }
+                                            evdev::Key::KEY_LEFTSHIFT | evdev::Key::KEY_RIGHTSHIFT => {
+                                                SHIFT_HELD.store(val != 0, Ordering::Relaxed);
+                                            }
+                                            evdev::Key::KEY_LEFTMETA | evdev::Key::KEY_RIGHTMETA => {
+                                                META_HELD.store(val != 0, Ordering::Relaxed);
+                                            }
+                                            _ => {}
+                                        }
+
+                                        // Trigger on press (value == 1)
+                                        if val == 1 {
+                                            // Check shortcut
+                                            if let Ok(cfg) = settings::load_settings() {
+                                                if let Some(ref shortcut_str) = cfg.preset_cycle_shortcut {
+                                                    if let Some(target) = parse_shortcut(shortcut_str) {
+                                                        if let Some(key_name) = map_evdev_key_name(key) {
+                                                            if target.key.eq_ignore_ascii_case(key_name)
+                                                                && target.alt == ALT_HELD.load(Ordering::Relaxed)
+                                                                && target.ctrl == CTRL_HELD.load(Ordering::Relaxed)
+                                                                && target.shift == SHIFT_HELD.load(Ordering::Relaxed)
+                                                                && target.meta == META_HELD.load(Ordering::Relaxed)
+                                                            {
+                                                                trigger_cycle_callback();
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
                                             let zone = map_key_to_zone_linux(key);
                                             if let Ok(mut events) = KEY_EVENTS.lock() {
                                                 events.push(zone);
@@ -109,7 +277,6 @@ pub fn start_key_listener() {
                                 }
                             }
                             Err(_) => {
-                                // Device disconnected or closed
                                 break;
                             }
                         }
@@ -118,6 +285,28 @@ pub fn start_key_listener() {
             });
         }
     });
+}
+
+#[cfg(not(target_os = "windows"))]
+fn map_evdev_key_name(key: evdev::Key) -> Option<&'static str> {
+    use evdev::Key;
+    match key {
+        Key::KEY_A => Some("a"), Key::KEY_B => Some("b"), Key::KEY_C => Some("c"), Key::KEY_D => Some("d"),
+        Key::KEY_E => Some("e"), Key::KEY_F => Some("f"), Key::KEY_G => Some("g"), Key::KEY_H => Some("h"),
+        Key::KEY_I => Some("i"), Key::KEY_J => Some("j"), Key::KEY_K => Some("k"), Key::KEY_L => Some("l"),
+        Key::KEY_M => Some("m"), Key::KEY_N => Some("n"), Key::KEY_O => Some("o"), Key::KEY_P => Some("p"),
+        Key::KEY_Q => Some("q"), Key::KEY_R => Some("r"), Key::KEY_S => Some("s"), Key::KEY_T => Some("t"),
+        Key::KEY_U => Some("u"), Key::KEY_V => Some("v"), Key::KEY_W => Some("w"), Key::KEY_X => Some("x"),
+        Key::KEY_Y => Some("y"), Key::KEY_Z => Some("z"),
+        Key::KEY_0 => Some("0"), Key::KEY_1 => Some("1"), Key::KEY_2 => Some("2"), Key::KEY_3 => Some("3"),
+        Key::KEY_4 => Some("4"), Key::KEY_5 => Some("5"), Key::KEY_6 => Some("6"), Key::KEY_7 => Some("7"),
+        Key::KEY_8 => Some("8"), Key::KEY_9 => Some("9"),
+        Key::KEY_F1 => Some("f1"), Key::KEY_F2 => Some("f2"), Key::KEY_F3 => Some("f3"), Key::KEY_F4 => Some("f4"),
+        Key::KEY_F5 => Some("f5"), Key::KEY_F6 => Some("f6"), Key::KEY_F7 => Some("f7"), Key::KEY_F8 => Some("f8"),
+        Key::KEY_F9 => Some("f9"), Key::KEY_F10 => Some("f10"), Key::KEY_F11 => Some("f11"), Key::KEY_F12 => Some("f12"),
+        Key::KEY_SPACE => Some("space"),
+        _ => None,
+    }
 }
 
 #[cfg(not(target_os = "windows"))]

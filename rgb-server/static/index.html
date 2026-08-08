@@ -218,6 +218,25 @@
     .preset-name { font-size: 13px; font-weight: 600; color: var(--text); transition: color 0.2s; }
     .preset-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
 
+    .fav-star {
+      background: none;
+      border: none;
+      font-size: 15px;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 2px 4px;
+      transition: all 0.15s ease;
+      line-height: 1;
+    }
+    .fav-star:hover {
+      transform: scale(1.3);
+      color: #f59e0b;
+    }
+    .fav-star.active {
+      color: #f59e0b;
+      text-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+    }
+
     /* Content Area */
     .content {
       display: flex;
@@ -767,6 +786,20 @@
       </div>
     </div>
 
+    <div class="sidebar-section">
+      <div class="sidebar-label">Preset Cycle & Hotkey</div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <span style="font-size:12px; font-weight:500; color:var(--text-muted);">Shortcut</span>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <input id="shortcutInput" class="preset-search" style="width:90px; padding:4px 8px; font-size:11px; text-align:center; font-family:'JetBrains Mono',monospace;" value="Alt+P" readonly placeholder="Click to record">
+            <button class="btn-sm" id="btnRecordShortcut" style="padding:4px 8px; font-size:11px;">Record</button>
+          </div>
+        </div>
+        <button class="btn-sm" id="btnCycleNow" style="width:100%; padding:8px; font-weight:600; background:var(--surface-accent); border-color:var(--border-focus); color:#a78bfa;">Cycle Preset 🔄</button>
+      </div>
+    </div>
+
     <div class="preset-search-container">
       <div class="sidebar-label">Search Effects</div>
       <input class="preset-search" id="presetSearch" placeholder="Filter presets…" autocomplete="off">
@@ -812,6 +845,9 @@ let paramValues = {};
 let ws = null;
 let brightnessDebounce = null;
 let presetTweaks = {};
+let presetCycleEffects = [];
+let presetCycleShortcut = "Alt+P";
+let isRecordingShortcut = false;
 
 // Static Editor State
 let staticColors = Array(24).fill({ r: 255, g: 255, b: 255 });
@@ -829,7 +865,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   await refreshStatus();
   connectWS();
   setupBrightness();
+  setupShortcutRecorder();
 
+  document.getElementById('btnCycleNow').addEventListener('click', cyclePresetNow);
   document.addEventListener('mouseup', () => { isMouseDown = false; });
 });
 
@@ -928,8 +966,16 @@ async function refreshStatus() {
     document.getElementById('brightnessSlider').value = Math.round(s.brightness * 100);
     document.getElementById('brightnessVal').textContent = Math.round(s.brightness * 100) + '%';
     
-    // Cache saved parameters
+    // Cache saved parameters and cycle settings
     presetTweaks = s.preset_tweaks || {};
+    presetCycleEffects = s.preset_cycle_effects || [];
+    presetCycleShortcut = s.preset_cycle_shortcut || "Alt+P";
+
+    if (!isRecordingShortcut) {
+      document.getElementById('shortcutInput').value = presetCycleShortcut;
+    }
+
+    renderPresetList(presets);
 
     if (s.preset) {
       highlightActive(s.preset);
@@ -954,12 +1000,111 @@ function renderPresetList(list) {
     const item = document.createElement('div');
     item.className = 'preset-item';
     item.dataset.name = p.name;
+
+    const isFav = presetCycleEffects.some(x => x.toLowerCase() === p.name.toLowerCase());
+
     item.innerHTML = `
-      <div class="preset-name">${p.display_name}</div>
+      <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+        <div class="preset-name">${p.display_name}</div>
+        <button class="fav-star ${isFav ? 'active' : ''}" title="${isFav ? 'Remove from cycle' : 'Add to favorite cycle'}">${isFav ? '★' : '☆'}</button>
+      </div>
       <div class="preset-desc">${p.description}</div>
     `;
+
+    const starBtn = item.querySelector('.fav-star');
+    starBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await toggleFavorite(p.name);
+    });
+
     item.addEventListener('click', () => selectPreset(p, true));
     el.appendChild(item);
+  });
+}
+
+async function toggleFavorite(presetName) {
+  const idx = presetCycleEffects.findIndex(x => x.toLowerCase() === presetName.toLowerCase());
+  if (idx >= 0) {
+    presetCycleEffects.splice(idx, 1);
+    toast(`Removed from favorites cycle`, 'ok');
+  } else {
+    presetCycleEffects.push(presetName);
+    toast(`Added to favorites cycle (⭐)`, 'ok');
+  }
+  await saveCycleSettings();
+  renderPresetList(presets);
+}
+
+async function saveCycleSettings() {
+  try {
+    await api('POST', '/api/settings', {
+      preset_cycle_effects: presetCycleEffects,
+      preset_cycle_shortcut: presetCycleShortcut,
+    });
+  } catch(e) {}
+}
+
+async function cyclePresetNow() {
+  try {
+    const res = await api('POST', '/api/cycle');
+    if (res.ok && res.preset) {
+      const meta = presets.find(p => p.name === res.preset);
+      const name = meta ? meta.display_name : res.preset;
+      toast(`🔄 Cycled to: ${name}`, 'ok');
+      await refreshStatus();
+    } else {
+      toast(res.error || 'No favorite presets in cycle list', 'err');
+    }
+  } catch(e) {
+    toast('Failed to cycle preset', 'err');
+  }
+}
+
+function setupShortcutRecorder() {
+  const input = document.getElementById('shortcutInput');
+  const recordBtn = document.getElementById('btnRecordShortcut');
+
+  recordBtn.addEventListener('click', () => {
+    if (isRecordingShortcut) {
+      isRecordingShortcut = false;
+      input.value = presetCycleShortcut;
+      input.style.borderColor = "var(--border)";
+      recordBtn.textContent = "Record";
+      return;
+    }
+
+    isRecordingShortcut = true;
+    input.value = "Press keys…";
+    input.style.borderColor = "var(--accent)";
+    recordBtn.textContent = "Cancel";
+  });
+
+  window.addEventListener('keydown', async (e) => {
+    if (!isRecordingShortcut) return;
+
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+
+    e.preventDefault();
+
+    const parts = [];
+    if (e.altKey) parts.push('Alt');
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.metaKey) parts.push('Super');
+
+    let keyName = e.key.toUpperCase();
+    if (keyName === ' ') keyName = 'Space';
+    parts.push(keyName);
+
+    const combo = parts.join('+');
+    presetCycleShortcut = combo;
+    input.value = combo;
+    input.style.borderColor = "var(--border)";
+    recordBtn.textContent = "Record";
+    isRecordingShortcut = false;
+
+    await saveCycleSettings();
+    toast(`Saved shortcut: ${combo}`, 'ok');
   });
 }
 

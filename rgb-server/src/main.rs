@@ -38,6 +38,7 @@ struct ControllerState {
     brightness: f32,
     start_time: std::time::Instant,
     last_update: std::time::Instant,
+    cycle_index: usize,
 }
 
 type SharedState = Arc<Mutex<ControllerState>>;
@@ -58,6 +59,8 @@ struct StatusResponse {
     connected: bool,
     preset: String,
     brightness: f32,
+    preset_cycle_effects: Vec<String>,
+    preset_cycle_shortcut: Option<String>,
     preset_tweaks: std::collections::HashMap<
         String,
         std::collections::HashMap<String, rgb_backend::presets::ParameterValue>,
@@ -76,6 +79,16 @@ struct SetBrightnessRequest {
     brightness: f32,
 }
 
+#[derive(Deserialize)]
+struct UpdateSettingsRequest {
+    #[serde(default)]
+    preset_cycle_effects: Option<Vec<String>>,
+    #[serde(default)]
+    preset_cycle_shortcut: Option<String>,
+    #[serde(default)]
+    brightness_level: Option<f32>,
+}
+
 #[derive(Serialize)]
 struct ApiError {
     error: String,
@@ -83,6 +96,44 @@ struct ApiError {
 
 fn api_err(msg: impl Into<String>) -> (StatusCode, Json<ApiError>) {
     (StatusCode::BAD_REQUEST, Json(ApiError { error: msg.into() }))
+}
+
+fn cycle_preset_in_server(ctrl_state: &SharedState) -> Option<String> {
+    let mut s = ctrl_state.lock().unwrap();
+
+    let cfg = settings::load_settings().unwrap_or_default();
+    let effects = cfg.preset_cycle_effects.clone();
+
+    if effects.is_empty() {
+        return None;
+    }
+
+    let next_index = (s.cycle_index + 1) % effects.len();
+    s.cycle_index = next_index;
+
+    let next_preset = effects[next_index].clone();
+    let tweaks = cfg.preset_tweaks.get(&next_preset).cloned().unwrap_or_default();
+
+    println!("[server] 🔄 Cycling preset to: {}", next_preset);
+
+    if let Some(mut old) = s.current_effect.take() {
+        old.stop(&mut s.controller);
+    }
+
+    s.current_params.clear();
+    s.current_params.extend(tweaks.clone());
+    s.current_preset = next_preset.clone();
+
+    if let Ok(mut eff) = rgb_backend::build_effect(&next_preset, tweaks) {
+        eff.start();
+        s.current_effect = Some(eff);
+    }
+
+    let mut updated_cfg = cfg;
+    updated_cfg.current_preset = next_preset.clone();
+    let _ = settings::save_settings(&updated_cfg);
+
+    Some(next_preset)
 }
 
 fn start_effect_loop(state: SharedState, tx: FrameSender) {
@@ -157,17 +208,15 @@ async fn serve_layout() -> impl IntoResponse {
 /// GET /api/status
 async fn get_status(State(app): State<AppState>) -> impl IntoResponse {
     let s = app.ctrl.lock().unwrap();
-    let tweaks = if let Ok(cfg) = settings::load_settings() {
-        cfg.preset_tweaks
-    } else {
-        std::collections::HashMap::new()
-    };
+    let cfg = settings::load_settings().unwrap_or_default();
 
     Json(StatusResponse {
         connected: s.controller.is_connected(),
         preset: s.current_preset.clone(),
         brightness: s.brightness,
-        preset_tweaks: tweaks,
+        preset_cycle_effects: cfg.preset_cycle_effects,
+        preset_cycle_shortcut: cfg.preset_cycle_shortcut,
+        preset_tweaks: cfg.preset_tweaks,
     })
 }
 
@@ -199,6 +248,13 @@ async fn set_preset(
     s.current_params.extend(params.clone());
     s.current_preset = req.preset.clone();
 
+    // Sync cycle index if selected preset exists in cycle list
+    if let Ok(cfg) = settings::load_settings() {
+        if let Some(pos) = cfg.preset_cycle_effects.iter().position(|x| x.eq_ignore_ascii_case(&req.preset)) {
+            s.cycle_index = pos;
+        }
+    }
+
     // Build the new effect
     let mut effect = rgb_backend::build_effect(&req.preset, params)
         .map_err(|e| api_err(e))?;
@@ -216,6 +272,54 @@ async fn set_preset(
     }
 
     Ok(Json(serde_json::json!({ "ok": true, "preset": req.preset })))
+}
+
+/// POST /api/cycle — cycle to the next favorite preset
+async fn cycle_preset_api(State(app): State<AppState>) -> impl IntoResponse {
+    if let Some(next) = cycle_preset_in_server(&app.ctrl) {
+        (StatusCode::OK, Json(serde_json::json!({ "ok": true, "preset": next })))
+    } else {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "ok": false, "error": "No favorite presets selected for cycling" })),
+        )
+    }
+}
+
+/// GET /api/settings
+async fn get_settings_api() -> impl IntoResponse {
+    let cfg = settings::load_settings().unwrap_or_default();
+    Json(cfg)
+}
+
+/// POST /api/settings — update cycle list, shortcut, or global settings
+async fn update_settings_api(
+    State(app): State<AppState>,
+    Json(req): Json<UpdateSettingsRequest>,
+) -> impl IntoResponse {
+    let mut cfg = settings::load_settings().unwrap_or_default();
+
+    if let Some(effects) = req.preset_cycle_effects {
+        cfg.preset_cycle_effects = effects;
+    }
+    if let Some(shortcut) = req.preset_cycle_shortcut {
+        cfg.preset_cycle_shortcut = if shortcut.trim().is_empty() { None } else { Some(shortcut.trim().to_string()) };
+    }
+    if let Some(b) = req.brightness_level {
+        cfg.brightness_level = b.clamp(0.0, 1.0);
+        let mut s = app.ctrl.lock().unwrap();
+        s.brightness = cfg.brightness_level;
+        s.controller.set_brightness(cfg.brightness_level);
+    }
+
+    if let Err(e) = settings::save_settings(&cfg) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "ok": false, "error": format!("Failed to save settings: {}", e) })),
+        );
+    }
+
+    (StatusCode::OK, Json(serde_json::json!({ "ok": true, "settings": cfg })))
 }
 
 /// POST /api/brightness
@@ -338,6 +442,12 @@ async fn main() {
         }
     };
 
+    let initial_cycle_index = cfg
+        .preset_cycle_effects
+        .iter()
+        .position(|x| x.eq_ignore_ascii_case(&last_preset))
+        .unwrap_or(0);
+
     let ctrl_state = Arc::new(Mutex::new(ControllerState {
         controller,
         ui_frame: ui_frame.clone(),
@@ -347,12 +457,19 @@ async fn main() {
         brightness: cfg.brightness_level,
         start_time: std::time::Instant::now(),
         last_update: std::time::Instant::now(),
+        cycle_index: initial_cycle_index,
     }));
 
     let (frame_tx, _) = broadcast::channel::<Vec<Color>>(4);
 
-    // Start key listener (for typing-reactive effects)
+    // Start key listener (for typing-reactive effects & global hotkey shortcuts)
     rgb_backend::input_handler::start_key_listener();
+
+    // Hook hotkey cycle callback into server state
+    let cycle_ctrl = ctrl_state.clone();
+    rgb_backend::input_handler::set_cycle_callback(move || {
+        cycle_preset_in_server(&cycle_ctrl);
+    });
 
     // Start effect loop
     start_effect_loop(ctrl_state.clone(), frame_tx.clone());
@@ -368,6 +485,8 @@ async fn main() {
         .route("/api/status", get(get_status))
         .route("/api/presets", get(get_presets))
         .route("/api/preset", post(set_preset))
+        .route("/api/cycle", post(cycle_preset_api).get(cycle_preset_api))
+        .route("/api/settings", get(get_settings_api).post(update_settings_api))
         .route("/api/brightness", post(set_brightness))
         .route("/api/frame", get(get_frame))
         .route("/ws", get(ws_handler))
