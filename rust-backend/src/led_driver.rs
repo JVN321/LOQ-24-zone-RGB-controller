@@ -395,20 +395,46 @@ impl LedController {
     }
 
     /// Enable or disable the controller's autonomous (firmware-driven) lighting mode.
-    /// Setting this to false allows the host to drive custom per-zone colors.
+    /// Setting this to false executes the full USB HID LampArray discovery handshake protocol
+    /// (LampArrayAttributesReport 0x01 query -> LampAttributesRequestReport 0x02 query -> LampArrayControlReport 0x06 set),
+    /// which unlocks host control even after a cold boot, battery drain, or full hardware reset.
     pub fn set_autonomous_mode(&mut self, autonomous: bool) -> Result<(), String> {
         let device = self.device.as_ref().ok_or("Not connected")?;
+
+        if !autonomous {
+            // --- FULL LAMPARRAY HANDSHAKE PROTOCOL ---
+            // Step 1: Query LampArrayAttributesReport (Report 0x01).
+            // This is required to transition the ITE 8258 microcontroller firmware state machine
+            // out of STATE_UNINITIALIZED (cold boot / battery drain state) into STATE_ATTRIBUTES_DISCOVERED.
+            let mut buf1 = [0u8; 64];
+            buf1[0] = 0x01;
+            let _ = device.get_feature_report(&mut buf1);
+            std::thread::sleep(std::time::Duration::from_millis(15));
+
+            // Step 2: Query LampAttributesRequestReport / ResponseReport (Report 0x02 -> 0x03) for Lamp 0.
+            let req2 = vec![0x02, 0x00, 0x00];
+            let _ = device.send_feature_report(&req2);
+            std::thread::sleep(std::time::Duration::from_millis(15));
+
+            let mut buf3 = [0u8; 64];
+            buf3[0] = 0x03;
+            let _ = device.get_feature_report(&mut buf3);
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+
+        // Step 3: Send LampArrayControlReport (Report 0x06) to toggle AutonomousMode.
+        // 0x00 = Host-controlled (disable autonomous mode)
+        // 0x01 = Autonomous mode (firmware-driven)
         let buf = vec![
             0x06, // Report ID 6 (LampArrayControlReport)
-            if autonomous { 0x01 } else { 0x00 }, // 0x01 = autonomous, 0x00 = host-controlled
+            if autonomous { 0x01 } else { 0x00 },
         ];
         if let Err(e) = device.send_feature_report(&buf) {
             self.device = None;
             return Err(e.to_string());
         }
-        
-        // Short delay to let the controller register the mode switch
-        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        std::thread::sleep(std::time::Duration::from_millis(15));
         Ok(())
     }
 }

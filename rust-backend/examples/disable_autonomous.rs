@@ -50,7 +50,33 @@ fn main() {
         }
     };
 
-    println!("Sending command to disable autonomous mode (taking host control)...");
+    println!("Executing LampArray discovery handshake protocol...");
+
+    // Step 1: Query LampArrayAttributesReport (Report 0x01)
+    println!(" 1. Querying LampArrayAttributesReport (Report 0x01)...");
+    let mut buf1 = [0u8; 64];
+    buf1[0] = 0x01;
+    match device.get_feature_report(&mut buf1) {
+        Ok(n) => println!("    ✓ Received LampArray attributes ({} bytes)", n),
+        Err(e) => eprintln!("    ⚠️ Warning querying Report 0x01: {}", e),
+    }
+    thread::sleep(Duration::from_millis(15));
+
+    // Step 2: Query LampAttributesRequestReport (Report 0x02 -> 0x03)
+    println!(" 2. Requesting Lamp 0 attributes (Report 0x02)...");
+    let req2 = vec![0x02, 0x00, 0x00];
+    if let Err(e) = device.send_feature_report(&req2) {
+        eprintln!("    ⚠️ Warning sending Report 0x02: {}", e);
+    }
+    thread::sleep(Duration::from_millis(15));
+
+    let mut buf3 = [0u8; 64];
+    buf3[0] = 0x03;
+    let _ = device.get_feature_report(&mut buf3);
+    thread::sleep(Duration::from_millis(15));
+
+    // Step 3: Send LampArrayControlReport (Report 0x06: AutonomousMode = 0)
+    println!(" 3. Sending LampArrayControlReport (Report 0x06: AutonomousMode = 0)...");
     let auto_off = vec![0x06, 0x00];
     match device.send_feature_report(&auto_off) {
         Ok(_) => {

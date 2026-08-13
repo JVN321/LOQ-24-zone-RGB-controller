@@ -187,17 +187,25 @@ The Lenovo LOQ keyboard features 24 physical RGB zones across the keyboard:
 
 ## Troubleshooting & Recovery
 
-### 1. What is Autonomous Mode?
-Under the Microsoft HID LampArray specification, **Autonomous Mode** (Report ID `0x06`) toggles LED control authority:
+### 1. What is Autonomous Mode & The LampArray Handshake Protocol?
+Under the USB HID LampArray specification (Usage Page `0x59`), **Autonomous Mode** (Report ID `0x06`) toggles LED control authority:
 - **Enabled (`0x01`)**: The keyboard's internal firmware plays built-in hardware color waves.
 - **Disabled (`0x00`)**: The firmware halts built-in animations and surrenders full control to `rgb-server` for custom per-zone frame updates (Reports `0x04`/`0x05`).
+
+**Cold Boot / Hard Reset Discovery Requirement:**
+When the laptop undergoes a full hard reset or battery drain, the ITE 8258 controller boots into `STATE_UNINITIALIZED`. In this state, the firmware ignores standalone `0x06 0x00` control reports until the host performs the **LampArray Discovery Handshake Protocol**:
+1. Host queries **Report `0x01`** (`LampArrayAttributesReport`) -> Microcontroller transitions to `STATE_ATTRIBUTES_DISCOVERED`.
+2. Host queries **Report `0x02`/`0x03`** (`LampAttributesRequestReport`/`ResponseReport`) -> Microcontroller prepares lamp map.
+3. Host sends **Report `0x06`** (`[0x06, 0x00]`) -> Microcontroller unlocks and enters `STATE_HOST_CONTROLLED`.
+
+`rgb-server` and `disable_autonomous` automatically execute this complete HID handshake, allowing Linux to unlock host control natively after cold boots without ever needing Windows Dynamic Lighting.
 
 ### 2. Microcontroller Recovery from Upgrade Mode (`048d:89db`)
 If the ITE Tech keyboard controller receives malformed or unpadded packets, it may crash into fallback bootloader mode (`048d:89db ITE Upgrade Mode` in `lsusb`).
 
 Because USB VBUS standby lines remain powered even during soft reboots, the chip stays in bootloader mode. To reset back to Normal Mode (`048d:c693`):
 1. **Shut down the laptop completely.**
-2. **Unplug the power adapter for 5–10 seconds** to completely discharge motherboard standby capacitors.
+2. **Unplug the power adapter for 5–10 seconds** to completely discharge motherboard standby capacitors (or run `cargo run --example usb_reset`).
 3. **Power back on.** The keyboard controller cold-boots back into normal mode, and `rgb-server` takes host control.
 
 ---
