@@ -462,24 +462,83 @@ mod linux_sampler {
     /// Capture the screen using `grim` (wlr-screencopy, no portal prompt).
     /// Returns raw RGBA bytes and (width, height) on success.
     fn capture_with_grim() -> Option<(ImageBuffer<Rgba<u8>, Vec<u8>>, u32, u32)> {
-        // Write PNG to stdout, read it back in memory — no temp file needed.
-        let output = match std::process::Command::new("grim")
-            .args(["-t", "png", "-"])
-            .output() 
-        {
+        let mut cmd = std::process::Command::new("grim");
+        cmd.args(["-t", "png", "-"]);
+
+        // Ensure XDG_RUNTIME_DIR is set
+        let runtime_dir = match std::env::var("XDG_RUNTIME_DIR") {
+            Ok(d) if !d.trim().is_empty() => d,
+            _ => {
+                let uid = std::process::Command::new("id")
+                    .arg("-u")
+                    .output()
+                    .ok()
+                    .and_then(|o| String::from_utf8(o.stdout).ok())
+                    .map(|s| s.trim().to_string())
+                    .unwrap_or_else(|| "1000".to_string());
+                let default_dir = format!("/run/user/{}", uid);
+                cmd.env("XDG_RUNTIME_DIR", &default_dir);
+                default_dir
+            }
+        };
+
+        // Auto-detect WAYLAND_DISPLAY if missing or empty in environment
+        if std::env::var("WAYLAND_DISPLAY").map(|v| v.trim().is_empty()).unwrap_or(true) {
+            if let Ok(entries) = std::fs::read_dir(&runtime_dir) {
+                let mut sockets: Vec<String> = entries
+                    .flatten()
+                    .filter_map(|e| {
+                        let name = e.file_name().to_string_lossy().to_string();
+                        if name.starts_with("wayland-") {
+                            Some(name)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                sockets.sort();
+                if let Some(socket) = sockets.last() {
+                    cmd.env("WAYLAND_DISPLAY", socket);
+                    std::env::set_var("WAYLAND_DISPLAY", socket);
+                }
+            }
+        }
+
+        let output = match cmd.output() {
             Ok(out) => out,
             Err(e) => {
-                eprintln!("⚠️  grim execution failed: {}", e);
+                static LAST_LOG: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let last = LAST_LOG.load(std::sync::atomic::Ordering::Relaxed);
+                if now - last >= 5 {
+                    LAST_LOG.store(now, std::sync::atomic::Ordering::Relaxed);
+                    eprintln!("⚠️  grim execution failed: {}", e);
+                }
                 return None;
             }
         };
 
         if !output.status.success() || output.stdout.is_empty() {
-            eprintln!(
-                "⚠️  grim failed ({}): {}",
-                output.status,
-                String::from_utf8_lossy(&output.stderr).trim()
-            );
+            // Display connection failed — clear WAYLAND_DISPLAY to force socket re-detection on next attempt
+            std::env::remove_var("WAYLAND_DISPLAY");
+
+            static LAST_LOG: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let last = LAST_LOG.load(std::sync::atomic::Ordering::Relaxed);
+            if now - last >= 5 {
+                LAST_LOG.store(now, std::sync::atomic::Ordering::Relaxed);
+                eprintln!(
+                    "⚠️  grim failed ({}): {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
+            }
             return None;
         }
 
