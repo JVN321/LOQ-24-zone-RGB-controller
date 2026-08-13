@@ -43,7 +43,8 @@ sudo pacman -S --needed \
     libxkbcommon \
     mesa \
     pipewire \
-    dbus
+    dbus \
+    grim
 ```
 
 #### Fedora (Workstation / Silverblue / Kinoite)
@@ -62,7 +63,8 @@ sudo dnf install -y \
     mesa-libgbm-devel \
     pipewire-devel \
     dbus-devel \
-    clang
+    clang \
+    grim
 ```
 
 #### Debian / Ubuntu
@@ -81,7 +83,8 @@ sudo apt-get update && sudo apt-get install -y \
     libgbm-dev \
     libpipewire-0.3-dev \
     libdbus-1-dev \
-    clang
+    clang \
+    grim
 ```
 
 ---

@@ -61,7 +61,7 @@ fi
 
 # 5. Disable autonomous mode & reset hardware state if needed
 echo -e "${BLUE}5/6 Clearing hardware firmware state and disabling autonomous mode...${NC}"
-if cargo run --manifest-path rust-backend/Cargo.toml --example disable_autonomous; then
+if cargo run --release --manifest-path "$SCRIPT_DIR/rust-backend/Cargo.toml" --example disable_autonomous; then
     echo -e "${GREEN}✓ Keyboard host control verified.${NC}"
 else
     echo -e "${YELLOW}Warning: Autonomous mode disabler returned non-zero code. Proceeding with service launch...${NC}"
