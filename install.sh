@@ -66,6 +66,11 @@ mkdir -p "$HOME/.local/bin"
 cp "$SCRIPT_DIR/target/release/rgb-server" "$HOME/.local/bin/rgb-server"
 chmod +x "$HOME/.local/bin/rgb-server"
 
+if [ -f "$SCRIPT_DIR/rgb-server-wrapper.sh" ]; then
+    cp "$SCRIPT_DIR/rgb-server-wrapper.sh" "$HOME/.local/bin/rgb-server-wrapper.sh"
+    chmod +x "$HOME/.local/bin/rgb-server-wrapper.sh"
+fi
+
 mkdir -p "$HOME/.config/systemd/user"
 if [ -f "$SCRIPT_DIR/rgb-controller.service" ]; then
     cp "$SCRIPT_DIR/rgb-controller.service" "$HOME/.config/systemd/user/rgb-controller.service"
