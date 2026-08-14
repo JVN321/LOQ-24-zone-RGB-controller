@@ -457,6 +457,7 @@ pub use dxgi::DxgiScreenSampler;
 #[cfg(not(target_os = "windows"))]
 mod linux_sampler {
     use super::*;
+    use std::os::unix::fs::FileTypeExt;
     use xcap::image::{ImageBuffer, Rgba};
 
     /// Capture the screen using `grim` (wlr-screencopy, no portal prompt).
@@ -489,7 +490,8 @@ mod linux_sampler {
                     .flatten()
                     .filter_map(|e| {
                         let name = e.file_name().to_string_lossy().to_string();
-                        if name.starts_with("wayland-") {
+                        let is_socket = e.file_type().map(|ft| ft.is_socket()).unwrap_or(false);
+                        if is_socket && name.starts_with("wayland-") && !name.ends_with(".lock") {
                             Some(name)
                         } else {
                             None

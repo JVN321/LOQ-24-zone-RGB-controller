@@ -13,11 +13,13 @@ fi
 
 # Auto-detect WAYLAND_DISPLAY if missing
 if [ -z "$WAYLAND_DISPLAY" ]; then
-    # Find active Wayland socket (sort by newest modification time if multiple)
-    LATEST_WAYLAND_SOCK=$(ls -t "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null | head -n 1)
-    if [ -n "$LATEST_WAYLAND_SOCK" ]; then
-        export WAYLAND_DISPLAY="$(basename "$LATEST_WAYLAND_SOCK")"
-    fi
+    # Find active Wayland domain socket (filter out .lock files and non-sockets)
+    for sock in $(ls -t "$XDG_RUNTIME_DIR"/wayland-* 2>/dev/null); do
+        if [ -S "$sock" ] && [[ "$sock" != *.lock ]]; then
+            export WAYLAND_DISPLAY="$(basename "$sock")"
+            break
+        fi
+    done
 fi
 
 # If WAYLAND_DISPLAY is still not set, check systemd environment
