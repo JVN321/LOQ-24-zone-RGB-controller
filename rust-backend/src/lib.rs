@@ -626,15 +626,32 @@ fn build_effect_inner(
             getf!("base_brightness", 0.20),
         )),
         "ambient" => {
-            let smoothing = getf!("smoothing", 3.0);
-            let rect_x = getf!("rect_x", 0.0);
-            let rect_y = getf!("rect_y", 0.0);
-            let rect_width = getf!("rect_width", 1.0);
-            let rect_height = getf!("rect_height", 1.0);
-            
+            let smoothing = getf!("smoothing", 0.0);
+            let response_speed = if smoothing > 0.01 && !preset_config.parameters.contains_key("response_speed") {
+                smoothing * 5.0
+            } else {
+                getf!("response_speed", 15.0)
+            };
+
+            let config = crate::presets::ambient::AmbientConfig {
+                algorithm: getf!("algorithm", 0.0) as u8,
+                saturation: getf!("saturation", 2.2),
+                contrast: getf!("contrast", 1.3),
+                black_cutoff: getf!("black_cutoff", 0.08),
+                min_brightness: getf!("min_brightness", 0.0),
+                brightness_boost: getf!("brightness_boost", 1.1),
+                response_speed,
+                dynamic_mode: getf!("dynamic_mode", 0.0) as u8,
+                noise_threshold: getf!("noise_threshold", 0.02),
+                rect_x: getf!("rect_x", 0.0),
+                rect_y: getf!("rect_y", 0.0),
+                rect_width: getf!("rect_width", 1.0),
+                rect_height: getf!("rect_height", 1.0),
+            };
+
             let mut sampler = crate::presets::ambient::DxgiScreenSampler::new().map_err(|e| e.to_string())?;
-            sampler.set_rect(rect_x, rect_y, rect_width, rect_height);
-            Box::new(AmbientEffect::new(sampler, smoothing))
+            sampler.set_config(config);
+            Box::new(AmbientEffect::new(sampler, config))
         }
         "audio_sparkle_media" => {
             let sampler_audio = crate::audio_sampler::AudioSampler::new(getf!("audio_source", 0.0)).map_err(|e| e.to_string())?;

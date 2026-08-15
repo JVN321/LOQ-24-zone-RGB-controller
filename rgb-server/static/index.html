@@ -695,65 +695,223 @@
     .ambient-editor-container {
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      margin-bottom: 20px;
+      gap: 18px;
+      margin-bottom: 24px;
     }
-    .screen-selector-card {
+    .ambient-section-card {
       background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 16px;
+      padding: 16px 18px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 14px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+    .ambient-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding-bottom: 10px;
+    }
+    .ambient-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ambient-section-badge {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--primary);
+      background: rgba(139, 92, 246, 0.15);
+      padding: 2px 8px;
+      border-radius: 12px;
+      border: 1px solid rgba(139, 92, 246, 0.3);
     }
     .mock-screen-wrapper {
       position: relative;
       width: 100%;
-      max-width: 480px;
+      max-width: 520px;
       margin: 0 auto;
-      background: #08060f;
-      border: 2px solid rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
+      background: #06040a;
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
       overflow: hidden;
       aspect-ratio: 16/9;
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.6), inset 0 0 20px rgba(0,0,0,0.8);
+      user-select: none;
+      touch-action: none;
     }
     .mock-screen-bg {
       width: 100%;
       height: 100%;
-      background: linear-gradient(135deg, #1e1b4b, #311042);
+      background: radial-gradient(circle at 50% 40%, #1e1538 0%, #0c0718 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      position: relative;
+    }
+    .mock-screen-text {
+      color: rgba(255, 255, 255, 0.18);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+    .crop-rect {
+      position: absolute;
+      border: 2px solid #8b5cf6;
+      background: rgba(139, 92, 246, 0.18);
+      box-shadow: 0 0 20px rgba(139, 92, 246, 0.35), inset 0 0 15px rgba(139, 92, 246, 0.2);
+      cursor: move;
+      box-sizing: border-box;
       display: flex;
       align-items: center;
       justify-content: center;
       user-select: none;
     }
-    .mock-screen-text {
-      color: rgba(255, 255, 255, 0.15);
-      font-size: 14px;
-      font-weight: 500;
-      letter-spacing: 2px;
-      text-transform: uppercase;
+    .crop-rect.active-drag {
+      border-color: #ec4899;
+      background: rgba(236, 72, 153, 0.22);
+      box-shadow: 0 0 25px rgba(236, 72, 153, 0.45);
     }
-    .crop-rect {
+    .crop-zones-grid {
       position: absolute;
-      border: 2px solid #8b5cf6;
-      background: rgba(139, 92, 246, 0.2);
-      box-shadow: 0 0 15px rgba(139, 92, 246, 0.4), inset 0 0 10px rgba(139, 92, 246, 0.3);
-      cursor: move;
+      inset: 0;
+      display: flex;
+      pointer-events: none;
+      opacity: 0.45;
+    }
+    .crop-zone-col {
+      flex: 1;
+      border-right: 1px dashed rgba(255, 255, 255, 0.2);
+      height: 100%;
       box-sizing: border-box;
+    }
+    .crop-zone-col:last-child {
+      border-right: none;
+    }
+    .crop-info-badge {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      background: rgba(10, 8, 20, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #e2e8f0;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 5;
     }
     .crop-handle {
       position: absolute;
-      width: 12px;
-      height: 12px;
       background: #d946ef;
       border: 2px solid #fff;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+      z-index: 10;
+      box-sizing: border-box;
+    }
+    .crop-handle.corner {
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
-      bottom: -6px;
-      right: -6px;
-      cursor: se-resize;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    }
+    .crop-handle.corner.nw { top: -6px; left: -6px; cursor: nwse-resize; }
+    .crop-handle.corner.ne { top: -6px; right: -6px; cursor: nesw-resize; }
+    .crop-handle.corner.sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+    .crop-handle.corner.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+
+    .crop-handle.edge {
+      background: #8b5cf6;
+      border-radius: 4px;
+    }
+    .crop-handle.edge.n { top: -4px; left: 50%; transform: translateX(-50%); width: 26px; height: 8px; cursor: ns-resize; }
+    .crop-handle.edge.s { bottom: -4px; left: 50%; transform: translateX(-50%); width: 26px; height: 8px; cursor: ns-resize; }
+    .crop-handle.edge.w { left: -4px; top: 50%; transform: translateY(-50%); width: 8px; height: 26px; cursor: ew-resize; }
+    .crop-handle.edge.e { right: -4px; top: 50%; transform: translateY(-50%); width: 8px; height: 26px; cursor: ew-resize; }
+
+    .crop-presets-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: center;
+      margin-top: 4px;
+    }
+    .crop-preset-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .crop-preset-btn:hover {
+      background: rgba(139, 92, 246, 0.2);
+      border-color: #8b5cf6;
+      color: #fff;
+      transform: translateY(-1px);
+    }
+    .crop-preset-btn.active {
+      background: #8b5cf6;
+      border-color: #8b5cf6;
+      color: #fff;
+      box-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
+    }
+    .coords-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    @media (max-width: 600px) {
+      .coords-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    .coord-box {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .coord-box-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+    .coord-box-input {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 4px;
+      padding: 4px 6px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-primary);
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .coord-box-input:focus {
+      outline: none;
+      border-color: #8b5cf6;
     }
   </style>
 </head>
@@ -1307,203 +1465,531 @@ function renderAmbientEditor(container) {
   const editorCard = document.createElement('div');
   editorCard.className = 'ambient-editor-container';
 
-  // Create the mock screen preview
+  // Initialize parameter values if undefined
+  const defaultParams = {
+    algorithm: 0.0,
+    response_speed: 15.0,
+    dynamic_mode: 0.0,
+    saturation: 2.2,
+    contrast: 1.3,
+    black_cutoff: 0.08,
+    min_brightness: 0.0,
+    brightness_boost: 1.1,
+    noise_threshold: 0.02,
+    rect_x: 0.0,
+    rect_y: 0.0,
+    rect_width: 1.0,
+    rect_height: 1.0,
+  };
+
+  // Support legacy 'smoothing' parameter if present in saved tweaks
+  if (paramValues['smoothing'] !== undefined && paramValues['response_speed'] === undefined) {
+    paramValues['response_speed'] = Math.min(50.0, Math.max(1.0, paramValues['smoothing'] * 5.0));
+  }
+
+  for (const [k, def] of Object.entries(defaultParams)) {
+    if (paramValues[k] === undefined) {
+      const pConfig = selectedPreset.parameters ? selectedPreset.parameters.find(pc => pc.name === k) : null;
+      paramValues[k] = pConfig ? pConfig.default : def;
+    }
+  }
+
+  // Helper algorithms metadata
+  const algorithms = [
+    { id: 0, name: "🌟 Vibrant Dominant (Vivid Colors)", desc: "Quantized chromatic clustering that isolates true rich colors from dull backgrounds. Ideal for games and anime." },
+    { id: 1, name: "🔥 High Contrast Saturated (Deep Blacks & Pop)", desc: "Aggressive shadow suppression with S-curve contrast boost. Produces pitch-black letterboxes and punchy highlights." },
+    { id: 2, name: "🌊 Perceptual Weighted Average (Harmonic Smooth)", desc: "Chroma-weighted integration that yields ultra-smooth, noiseless zone gradients without banding." },
+    { id: 3, name: "💎 Dominant Hue (Color-Pure Modal)", desc: "24-bin modal hue extraction that reconstructs pure, crisp color hues without murky brown/gray mixing." },
+    { id: 4, name: "⚡ Peak Chroma (Maximum Accent / Laser Focus)", desc: "Tracks the most vivid element or glowing accent in each zone (neon lights, lasers, spell effects)." },
+    { id: 5, name: "🎬 Natural Cinema Average (True Linear sRGB)", desc: "Accurate linear color average with black floor suppression. Best for natural film & documentary viewing." }
+  ];
+
+  const dynamicModes = [
+    { id: 0, name: "🚀 Dynamic (Fast Attack, Smooth Decay)", desc: "Snaps instantly to bright explosions and color bursts (2.5x speed), then decays gracefully to prevent LED strobe." },
+    { id: 1, name: "〰️ Exponential Smooth (EMA Decay)", desc: "Buttery smooth exponential ease-in/ease-out transitions across all scenes." },
+    { id: 2, name: "⚡ Instant Zero-Latency (0ms Gaming)", desc: "Zero delay, 1:1 instantaneous frame reaction for competitive reflex gaming." },
+    { id: 3, name: "📏 Linear Step (Constant Rate)", desc: "Transitions at a steady constant speed across color distances." }
+  ];
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // CARD 1: SCREEN CAPTURE REGION
+  // ───────────────────────────────────────────────────────────────────────────
   const screenCard = document.createElement('div');
-  screenCard.className = 'screen-selector-card';
+  screenCard.className = 'ambient-section-card';
   screenCard.innerHTML = `
-    <div class="param-label">Screen Capture Region</div>
-    <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
-      Drag the purple rectangle to move it, or drag the bottom-right pink dot to resize.
+    <div class="ambient-section-header">
+      <div class="ambient-section-title">
+        <span>🖥️</span> Screen Capture Region
+      </div>
+      <div class="ambient-section-badge">8-Point Resizing</div>
     </div>
+    <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+      Drag inside the rectangle to move it, or drag any of the <strong>4 corners</strong> or <strong>4 edges</strong> to crop. The 24 vertical divisions show keyboard zone mapping.
+    </div>
+
+    <!-- Quick Presets Bar -->
+    <div class="crop-presets-bar">
+      <button class="crop-preset-btn" data-crop="0,0,1,1">🖥️ Full Screen</button>
+      <button class="crop-preset-btn" data-crop="0,0.12,1,0.76">🎬 Cinema 21:9</button>
+      <button class="crop-preset-btn" data-crop="0,0,1,0.50">⬆️ Top Half</button>
+      <button class="crop-preset-btn" data-crop="0,0.50,1,0.50">⬇️ Bottom Half</button>
+      <button class="crop-preset-btn" data-crop="0.10,0.10,0.80,0.80">🎯 Center 16:9</button>
+      <button class="crop-preset-btn" data-crop="0.04,0.04,0.92,0.92">🔲 Outer Border</button>
+    </div>
+
+    <!-- Interactive Mock Display -->
     <div class="mock-screen-wrapper" id="mockScreenWrapper">
       <div class="mock-screen-bg">
         <span class="mock-screen-text">Monitor Display</span>
       </div>
       <div class="crop-rect" id="cropRect">
-        <div class="crop-handle" id="cropHandle"></div>
+        <!-- 24-Zone Grid Lines -->
+        <div class="crop-zones-grid" id="cropZonesGrid"></div>
+        <!-- Live Coordinate & Dimensions Badge -->
+        <div class="crop-info-badge" id="cropInfoBadge">100% × 100%</div>
+
+        <!-- 4 Corner Handles -->
+        <div class="crop-handle corner nw" data-handle="nw"></div>
+        <div class="crop-handle corner ne" data-handle="ne"></div>
+        <div class="crop-handle corner sw" data-handle="sw"></div>
+        <div class="crop-handle corner se" data-handle="se"></div>
+
+        <!-- 4 Edge Handles -->
+        <div class="crop-handle edge n" data-handle="n"></div>
+        <div class="crop-handle edge s" data-handle="s"></div>
+        <div class="crop-handle edge w" data-handle="w"></div>
+        <div class="crop-handle edge e" data-handle="e"></div>
+      </div>
+    </div>
+
+    <!-- Direct Coordinates Numeric Inputs -->
+    <div class="coords-grid">
+      <div class="coord-box">
+        <span class="coord-box-label">Left (X %)</span>
+        <input type="number" class="coord-box-input" id="num-rect_x" min="0" max="95" step="1">
+      </div>
+      <div class="coord-box">
+        <span class="coord-box-label">Top (Y %)</span>
+        <input type="number" class="coord-box-input" id="num-rect_y" min="0" max="95" step="1">
+      </div>
+      <div class="coord-box">
+        <span class="coord-box-label">Width (%)</span>
+        <input type="number" class="coord-box-input" id="num-rect_width" min="5" max="100" step="1">
+      </div>
+      <div class="coord-box">
+        <span class="coord-box-label">Height (%)</span>
+        <input type="number" class="coord-box-input" id="num-rect_height" min="5" max="100" step="1">
       </div>
     </div>
   `;
   editorCard.appendChild(screenCard);
 
-  // Add the parameters grid for numeric controls
-  const grid = document.createElement('div');
-  grid.className = 'params-grid';
-  editorCard.appendChild(grid);
+  // Fill in 24 zone columns inside the crop rectangle
+  const zonesGrid = screenCard.querySelector('#cropZonesGrid');
+  for (let z = 0; z < 24; z++) {
+    const col = document.createElement('div');
+    col.className = 'crop-zone-col';
+    zonesGrid.appendChild(col);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // CARD 2: COLOR EXTRACTION & CONTRAST
+  // ───────────────────────────────────────────────────────────────────────────
+  const colorCard = document.createElement('div');
+  colorCard.className = 'ambient-section-card';
+  colorCard.innerHTML = `
+    <div class="ambient-section-header">
+      <div class="ambient-section-title">
+        <span>🎨</span> Color Extraction & Contrast Engine
+      </div>
+      <div class="ambient-section-badge">HDR Color</div>
+    </div>
+
+    <!-- Algorithm Dropdown -->
+    <div>
+      <div class="param-label">Color Extraction Algorithm</div>
+      <select class="param-select" id="param-algorithm" style="width:100%; font-size:13px; font-weight:500;">
+        ${algorithms.map(a => `<option value="${a.id}">${a.name}</option>`).join('')}
+      </select>
+      <div id="algoDescription" style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.4;"></div>
+    </div>
+
+    <!-- Color Tuning Sliders Grid -->
+    <div class="params-grid">
+      <div class="param-card">
+        <div class="param-label">Saturation Boost</div>
+        <div class="param-slider-row">
+          <input type="range" id="param-saturation" min="0.5" max="4.0" step="0.1" value="${paramValues.saturation}">
+          <div class="param-val" id="pval-saturation">${paramValues.saturation.toFixed(1)}x</div>
+        </div>
+      </div>
+
+      <div class="param-card">
+        <div class="param-label">Contrast Gamma (S-Curve)</div>
+        <div class="param-slider-row">
+          <input type="range" id="param-contrast" min="0.5" max="3.0" step="0.05" value="${paramValues.contrast}">
+          <div class="param-val" id="pval-contrast">${paramValues.contrast.toFixed(2)}</div>
+        </div>
+      </div>
+
+      <div class="param-card">
+        <div class="param-label">Black Level Cutoff</div>
+        <div class="param-slider-row">
+          <input type="range" id="param-black_cutoff" min="0.0" max="0.4" step="0.01" value="${paramValues.black_cutoff}">
+          <div class="param-val" id="pval-black_cutoff">${paramValues.black_cutoff.toFixed(2)}</div>
+        </div>
+      </div>
+
+      <div class="param-card">
+        <div class="param-label">Minimum Brightness Floor</div>
+        <div class="param-slider-row">
+          <input type="range" id="param-min_brightness" min="0.0" max="0.5" step="0.01" value="${paramValues.min_brightness}">
+          <div class="param-val" id="pval-min_brightness">${paramValues.min_brightness.toFixed(2)}</div>
+        </div>
+      </div>
+
+      <div class="param-card">
+        <div class="param-label">Brightness Gain</div>
+        <div class="param-slider-row">
+          <input type="range" id="param-brightness_boost" min="0.5" max="2.5" step="0.05" value="${paramValues.brightness_boost}">
+          <div class="param-val" id="pval-brightness_boost">${paramValues.brightness_boost.toFixed(2)}x</div>
+        </div>
+      </div>
+    </div>
+  `;
+  editorCard.appendChild(colorCard);
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // CARD 3: RESPONSIVENESS & DYNAMICS
+  // ───────────────────────────────────────────────────────────────────────────
+  const dynamicsCard = document.createElement('div');
+  dynamicsCard.className = 'ambient-section-card';
+  dynamicsCard.innerHTML = `
+    <div class="ambient-section-header">
+      <div class="ambient-section-title">
+        <span>⚡</span> Responsiveness & Transition Dynamics
+      </div>
+      <div class="ambient-section-badge">Agility Control</div>
+    </div>
+
+    <!-- Dynamic Mode Dropdown -->
+    <div>
+      <div class="param-label">Transition Dynamic Mode</div>
+      <select class="param-select" id="param-dynamic_mode" style="width:100%; font-size:13px; font-weight:500;">
+        ${dynamicModes.map(d => `<option value="${d.id}">${d.name}</option>`).join('')}
+      </select>
+      <div id="dynamicModeDescription" style="font-size:11px; color:var(--text-muted); margin-top:6px; line-height:1.4;"></div>
+    </div>
+
+    <!-- Dynamics Sliders Grid -->
+    <div class="params-grid">
+      <div class="param-card">
+        <div class="param-label">Response Speed (Agility)</div>
+        <div class="param-slider-row">
+          <input type="range" id="param-response_speed" min="1.0" max="50.0" step="1.0" value="${paramValues.response_speed}">
+          <div class="param-val" id="pval-response_speed">${Math.round(paramValues.response_speed)}</div>
+        </div>
+      </div>
+
+      <div class="param-card">
+        <div class="param-label">Jitter Noise Gate</div>
+        <div class="param-slider-row">
+          <input type="range" id="param-noise_threshold" min="0.0" max="0.1" step="0.005" value="${paramValues.noise_threshold}">
+          <div class="param-val" id="pval-noise_threshold">${paramValues.noise_threshold.toFixed(3)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+  editorCard.appendChild(dynamicsCard);
 
   container.appendChild(editorCard);
 
-  // Initialize values if undefined
-  const params = ['smoothing', 'rect_x', 'rect_y', 'rect_width', 'rect_height'];
-  params.forEach(p => {
-    if (paramValues[p] === undefined) {
-      const pConfig = selectedPreset.parameters.find(pc => pc.name === p);
-      paramValues[p] = pConfig ? pConfig.default : (p === 'smoothing' ? 3.0 : (p.startsWith('rect_w') || p.startsWith('rect_h') ? 1.0 : 0.0));
+  // ───────────────────────────────────────────────────────────────────────────
+  // BIND CONTROLS & EVENT HANDLERS
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // 1. Algorithm dropdown binding
+  const algoSelect = document.getElementById('param-algorithm');
+  const algoDesc = document.getElementById('algoDescription');
+  const updateAlgoDesc = (id) => {
+    const item = algorithms.find(a => a.id === parseInt(id)) || algorithms[0];
+    algoDesc.textContent = item.desc;
+  };
+  algoSelect.value = Math.round(paramValues.algorithm).toString();
+  updateAlgoDesc(algoSelect.value);
+  algoSelect.addEventListener('change', e => {
+    paramValues.algorithm = parseFloat(e.target.value);
+    updateAlgoDesc(e.target.value);
+    debouncedApplyPreset();
+  });
+
+  // 2. Dynamic mode dropdown binding
+  const dynSelect = document.getElementById('param-dynamic_mode');
+  const dynDesc = document.getElementById('dynamicModeDescription');
+  const updateDynDesc = (id) => {
+    const item = dynamicModes.find(d => d.id === parseInt(id)) || dynamicModes[0];
+    dynDesc.textContent = item.desc;
+  };
+  dynSelect.value = Math.round(paramValues.dynamic_mode).toString();
+  updateDynDesc(dynSelect.value);
+  dynSelect.addEventListener('change', e => {
+    paramValues.dynamic_mode = parseFloat(e.target.value);
+    updateDynDesc(e.target.value);
+    debouncedApplyPreset();
+  });
+
+  // 3. Bind all numeric range sliders
+  const sliderIds = [
+    { key: 'saturation', precision: 1, suffix: 'x' },
+    { key: 'contrast', precision: 2, suffix: '' },
+    { key: 'black_cutoff', precision: 2, suffix: '' },
+    { key: 'min_brightness', precision: 2, suffix: '' },
+    { key: 'brightness_boost', precision: 2, suffix: 'x' },
+    { key: 'response_speed', precision: 0, suffix: '' },
+    { key: 'noise_threshold', precision: 3, suffix: '' }
+  ];
+
+  sliderIds.forEach(({ key, precision, suffix }) => {
+    const slider = document.getElementById(`param-${key}`);
+    const valEl = document.getElementById(`pval-${key}`);
+    if (slider && valEl) {
+      slider.addEventListener('input', e => {
+        paramValues[key] = parseFloat(e.target.value);
+        valEl.textContent = paramValues[key].toFixed(precision) + suffix;
+        debouncedApplyPreset();
+      });
     }
   });
 
-  // Render the sliders for these parameters
-  selectedPreset.parameters.forEach(p => {
-    const card = document.createElement('div');
-    card.className = 'param-card';
-    const val = paramValues[p.name];
-    const precisionStr = val.toFixed(p.step < 0.1 ? 2 : p.step < 1 ? 1 : 0);
-    
-    card.innerHTML = `
-      <div class="param-label">${p.label}</div>
-      <div class="param-slider-row">
-        <input type="range" id="param-${p.name}" min="${p.min}" max="${p.max}" step="${p.step}" value="${val}">
-        <div class="param-val" id="pval-${p.name}">${precisionStr}</div>
-      </div>
-    `;
-    const slider = card.querySelector('input');
-    const valEl = card.querySelector('.param-val');
-    
-    slider.addEventListener('input', e => {
-      paramValues[p.name] = parseFloat(e.target.value);
-      valEl.textContent = paramValues[p.name].toFixed(p.step < 0.1 ? 2 : p.step < 1 ? 1 : 0);
-      updateCropRectFromSliders();
-      debouncedApplyPreset();
-    });
-    
-    grid.appendChild(card);
-  });
-
-  // Dragging and resizing logic
+  // ───────────────────────────────────────────────────────────────────────────
+  // 8-POINT SCREEN RESIZING & DRAGGING ENGINE
+  // ───────────────────────────────────────────────────────────────────────────
   const wrapper = document.getElementById('mockScreenWrapper');
   const crop = document.getElementById('cropRect');
-  const handle = document.getElementById('cropHandle');
+  const infoBadge = document.getElementById('cropInfoBadge');
 
-  function updateCropRectFromSliders() {
-    const wWidth = wrapper.clientWidth;
-    const wHeight = wrapper.clientHeight;
-    
-    const x = paramValues['rect_x'] * wWidth;
-    const y = paramValues['rect_y'] * wHeight;
-    const w = paramValues['rect_width'] * wWidth;
-    const h = paramValues['rect_height'] * wHeight;
-    
+  const numX = document.getElementById('num-rect_x');
+  const numY = document.getElementById('num-rect_y');
+  const numW = document.getElementById('num-rect_width');
+  const numH = document.getElementById('num-rect_height');
+
+  function updateVisualCrop(applyNetwork = false) {
+    const wWidth = wrapper.clientWidth || 480;
+    const wHeight = wrapper.clientHeight || 270;
+
+    const x = paramValues.rect_x * wWidth;
+    const y = paramValues.rect_y * wHeight;
+    const w = paramValues.rect_width * wWidth;
+    const h = paramValues.rect_height * wHeight;
+
     crop.style.left = `${x}px`;
     crop.style.top = `${y}px`;
     crop.style.width = `${w}px`;
     crop.style.height = `${h}px`;
+
+    const pctX = Math.round(paramValues.rect_x * 100);
+    const pctY = Math.round(paramValues.rect_y * 100);
+    const pctW = Math.round(paramValues.rect_width * 100);
+    const pctH = Math.round(paramValues.rect_height * 100);
+
+    if (infoBadge) {
+      infoBadge.textContent = `${pctW}% × ${pctH}% @ (${pctX}%, ${pctY}%)`;
+    }
+
+    if (numX) numX.value = pctX;
+    if (numY) numY.value = pctY;
+    if (numW) numW.value = pctW;
+    if (numH) numH.value = pctH;
+
+    // Check quick presets active state
+    document.querySelectorAll('.crop-preset-btn').forEach(btn => {
+      const [px, py, pw, ph] = btn.dataset.crop.split(',').map(parseFloat);
+      const isMatch = Math.abs(paramValues.rect_x - px) < 0.02 &&
+                      Math.abs(paramValues.rect_y - py) < 0.02 &&
+                      Math.abs(paramValues.rect_width - pw) < 0.02 &&
+                      Math.abs(paramValues.rect_height - ph) < 0.02;
+      btn.classList.toggle('active', isMatch);
+    });
+
+    if (applyNetwork) {
+      debouncedApplyPreset();
+    }
   }
 
-  // Update immediately after layout yields
-  setTimeout(updateCropRectFromSliders, 50);
+  // Initial update
+  setTimeout(() => updateVisualCrop(false), 50);
 
-  // Resize listener for responsive layout
-  const resizeObserver = new ResizeObserver(() => {
-    updateCropRectFromSliders();
-  });
+  // ResizeObserver for container resizing
+  const resizeObserver = new ResizeObserver(() => updateVisualCrop(false));
   resizeObserver.observe(wrapper);
 
-  // Draggable logic for the crop rect
-  let isDragging = false;
-  let isResizing = false;
-  let startX, startY;
-  let startLeft, startTop, startWidth, startHeight;
+  // Numeric coordinate inputs 2-way data binding
+  const bindNumInput = (el, key, isWidthHeight = false) => {
+    el.addEventListener('change', e => {
+      let val = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100;
+      if (isWidthHeight) {
+        val = Math.max(0.05, Math.min(1.0, val));
+      }
+      paramValues[key] = parseFloat(val.toFixed(2));
+      // Clamp bounds
+      if (key === 'rect_x' && paramValues.rect_x + paramValues.rect_width > 1.0) {
+        paramValues.rect_width = parseFloat((1.0 - paramValues.rect_x).toFixed(2));
+      }
+      if (key === 'rect_y' && paramValues.rect_y + paramValues.rect_height > 1.0) {
+        paramValues.rect_height = parseFloat((1.0 - paramValues.rect_y).toFixed(2));
+      }
+      if (key === 'rect_width' && paramValues.rect_x + paramValues.rect_width > 1.0) {
+        paramValues.rect_x = parseFloat((1.0 - paramValues.rect_width).toFixed(2));
+      }
+      if (key === 'rect_height' && paramValues.rect_y + paramValues.rect_height > 1.0) {
+        paramValues.rect_y = parseFloat((1.0 - paramValues.rect_height).toFixed(2));
+      }
+      updateVisualCrop(true);
+    });
+  };
 
-  crop.addEventListener('mousedown', e => {
-    if (e.target === handle) return; // let handle handle it
-    isDragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    
-    const rect = crop.getBoundingClientRect();
-    const wRect = wrapper.getBoundingClientRect();
-    startLeft = rect.left - wRect.left;
-    startTop = rect.top - wRect.top;
-    
-    e.preventDefault();
+  bindNumInput(numX, 'rect_x', false);
+  bindNumInput(numY, 'rect_y', false);
+  bindNumInput(numW, 'rect_width', true);
+  bindNumInput(numH, 'rect_height', true);
+
+  // Quick Presets Buttons Click
+  screenCard.querySelectorAll('.crop-preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const [px, py, pw, ph] = btn.dataset.crop.split(',').map(parseFloat);
+      paramValues.rect_x = px;
+      paramValues.rect_y = py;
+      paramValues.rect_width = pw;
+      paramValues.rect_height = ph;
+      updateVisualCrop(true);
+    });
   });
 
-  handle.addEventListener('mousedown', e => {
-    isResizing = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    
-    const rect = crop.getBoundingClientRect();
-    startWidth = rect.width;
-    startHeight = rect.height;
-    
-    e.preventDefault();
-    e.stopPropagation();
-  });
+  // 8-Point Multi-Corner & Edge Interactive Dragging
+  let activeInteraction = null; // 'drag' or handle name: 'nw', 'ne', 'sw', 'se', 'n', 's', 'w', 'e'
+  let startX = 0, startY = 0;
+  let startRect = { x: 0, y: 0, w: 0, h: 0 };
 
-  document.addEventListener('mousemove', e => {
+  const onPointerDown = (e, interactionType) => {
+    activeInteraction = interactionType;
+    startX = e.clientX || (e.touches && e.touches[0].clientX);
+    startY = e.clientY || (e.touches && e.touches[0].clientY);
+
     const wWidth = wrapper.clientWidth;
     const wHeight = wrapper.clientHeight;
-    
-    if (isDragging) {
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      
-      let newLeft = startLeft + dx;
-      let newTop = startTop + dy;
-      
-      const maxLeft = wWidth - crop.clientWidth;
-      const maxTop = wHeight - crop.clientHeight;
-      
-      newLeft = Math.max(0, Math.min(newLeft, maxLeft));
-      newTop = Math.max(0, Math.min(newTop, maxTop));
-      
-      crop.style.left = `${newLeft}px`;
-      crop.style.top = `${newTop}px`;
-      
-      // Update paramValues & sliders
-      paramValues['rect_x'] = parseFloat((newLeft / wWidth).toFixed(2));
-      paramValues['rect_y'] = parseFloat((newTop / wHeight).toFixed(2));
-      
-      document.getElementById('param-rect_x').value = paramValues['rect_x'];
-      document.getElementById('pval-rect_x').textContent = paramValues['rect_x'].toFixed(2);
-      
-      document.getElementById('param-rect_y').value = paramValues['rect_y'];
-      document.getElementById('pval-rect_y').textContent = paramValues['rect_y'].toFixed(2);
-      debouncedApplyPreset();
-    }
-    
-    if (isResizing) {
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      
-      let newWidth = startWidth + dx;
-      let newHeight = startHeight + dy;
-      
-      const rect = crop.getBoundingClientRect();
-      const wRect = wrapper.getBoundingClientRect();
-      const currentLeft = rect.left - wRect.left;
-      const currentTop = rect.top - wRect.top;
-      
-      const maxWidth = wWidth - currentLeft;
-      const maxHeight = wHeight - currentTop;
-      
-      newWidth = Math.max(10, Math.min(newWidth, maxWidth));
-      newHeight = Math.max(10, Math.min(newHeight, maxHeight));
-      
-      crop.style.width = `${newWidth}px`;
-      crop.style.height = `${newHeight}px`;
-      
-      // Update paramValues & sliders
-      paramValues['rect_width'] = parseFloat((newWidth / wWidth).toFixed(2));
-      paramValues['rect_height'] = parseFloat((newHeight / wHeight).toFixed(2));
-      
-      document.getElementById('param-rect_width').value = paramValues['rect_width'];
-      document.getElementById('pval-rect_width').textContent = paramValues['rect_width'].toFixed(2);
-      
-      document.getElementById('param-rect_height').value = paramValues['rect_height'];
-      document.getElementById('pval-rect_height').textContent = paramValues['rect_height'].toFixed(2);
-      debouncedApplyPreset();
-    }
+
+    startRect = {
+      x: paramValues.rect_x * wWidth,
+      y: paramValues.rect_y * wHeight,
+      w: paramValues.rect_width * wWidth,
+      h: paramValues.rect_height * wHeight,
+    };
+
+    crop.classList.add('active-drag');
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  // Bind handles
+  crop.querySelectorAll('.crop-handle').forEach(handle => {
+    const handleType = handle.dataset.handle;
+    handle.addEventListener('mousedown', e => onPointerDown(e, handleType));
+    handle.addEventListener('touchstart', e => onPointerDown(e, handleType), { passive: false });
   });
 
-  document.addEventListener('mouseup', () => {
-    if (isDragging || isResizing) {
-      applyPreset(false);
-    }
-    isDragging = false;
-    isResizing = false;
+  // Bind body drag
+  crop.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('crop-handle')) return;
+    onPointerDown(e, 'drag');
   });
+  crop.addEventListener('touchstart', e => {
+    if (e.target.classList.contains('crop-handle')) return;
+    onPointerDown(e, 'drag');
+  }, { passive: false });
+
+  const onPointerMove = (e) => {
+    if (!activeInteraction) return;
+
+    const curX = e.clientX || (e.touches && e.touches[0].clientX);
+    const curY = e.clientY || (e.touches && e.touches[0].clientY);
+    const dx = curX - startX;
+    const dy = curY - startY;
+
+    const wWidth = wrapper.clientWidth;
+    const wHeight = wrapper.clientHeight;
+    const minSize = 16; // min pixel size
+
+    let newX = startRect.x;
+    let newY = startRect.y;
+    let newW = startRect.w;
+    let newH = startRect.h;
+
+    if (activeInteraction === 'drag') {
+      newX = Math.max(0, Math.min(startRect.x + dx, wWidth - startRect.w));
+      newY = Math.max(0, Math.min(startRect.y + dy, wHeight - startRect.h));
+    } else {
+      // 8-direction resizing
+      if (activeInteraction.includes('e')) {
+        newW = Math.max(minSize, Math.min(startRect.w + dx, wWidth - startRect.x));
+      }
+      if (activeInteraction.includes('s')) {
+        newH = Math.max(minSize, Math.min(startRect.h + dy, wHeight - startRect.y));
+      }
+      if (activeInteraction.includes('w')) {
+        const potentialW = startRect.w - dx;
+        if (potentialW >= minSize) {
+          const potentialX = startRect.x + dx;
+          if (potentialX >= 0) {
+            newX = potentialX;
+            newW = potentialW;
+          } else {
+            newX = 0;
+            newW = startRect.x + startRect.w;
+          }
+        } else {
+          newX = startRect.x + startRect.w - minSize;
+          newW = minSize;
+        }
+      }
+      if (activeInteraction.includes('n')) {
+        const potentialH = startRect.h - dy;
+        if (potentialH >= minSize) {
+          const potentialY = startRect.y + dy;
+          if (potentialY >= 0) {
+            newY = potentialY;
+            newH = potentialH;
+          } else {
+            newY = 0;
+            newH = startRect.y + startRect.h;
+          }
+        } else {
+          newY = startRect.y + startRect.h - minSize;
+          newH = minSize;
+        }
+      }
+    }
+
+    // Convert to fractions [0.0 .. 1.0]
+    paramValues.rect_x = parseFloat((newX / wWidth).toFixed(2));
+    paramValues.rect_y = parseFloat((newY / wHeight).toFixed(2));
+    paramValues.rect_width = parseFloat((newW / wWidth).toFixed(2));
+    paramValues.rect_height = parseFloat((newH / wHeight).toFixed(2));
+
+    updateVisualCrop(true);
+  };
+
+  const onPointerUp = () => {
+    if (activeInteraction) {
+      crop.classList.remove('active-drag');
+      applyPreset(false);
+      activeInteraction = null;
+    }
+  };
+
+  document.addEventListener('mousemove', onPointerMove);
+  document.addEventListener('touchmove', onPointerMove, { passive: false });
+  document.addEventListener('mouseup', onPointerUp);
+  document.addEventListener('touchend', onPointerUp);
 }
 
 // ─── 24-Zone Static Color Palette Editor ──────────────────────────────────────
