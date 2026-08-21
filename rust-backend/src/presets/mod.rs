@@ -103,7 +103,7 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
                     label: "Color Algorithm".to_string(),
                     param_type: ParameterType::Float,
                     min: 0.0,
-                    max: 5.0,
+                    max: 6.0,
                     default: 0.0,
                     step: 1.0,
                 },

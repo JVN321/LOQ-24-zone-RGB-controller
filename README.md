@@ -20,6 +20,13 @@ cd LOQ-24-zone-RGB-controller
 
 Open your browser at **[http://127.0.0.1:7070](http://127.0.0.1:7070)**.
 
+#### Updating & Deploying Changes
+Whenever you pull updates or modify code, use the automated deployment script to rebuild, stop running daemons safely, update binaries, and restart the service:
+
+```bash
+./deploy.sh
+```
+
 ---
 
 ### Option B: Manual Installation
@@ -125,14 +132,26 @@ sudo usermod -aG plugdev $USER
 
 ---
 
-### 4. Enable Startup Service (systemd)
+### 4. Enable Startup Service (systemd) & Automated Deployment
 
-To automatically launch the RGB controller daemon on user login:
+#### Automated Deployment (Recommended)
+To deploy, update, or restart the RGB controller service cleanly in one step without encountering `Text file busy` errors:
 
 ```bash
-# 1. Install binary and wrapper script
+./deploy.sh
+```
+
+`deploy.sh` automatically stops active services, compiles the workspace in release mode, copies `rgb-server` and `rgb-server-wrapper.sh` to `~/.local/bin/`, performs the LampArray host unlock handshake, and starts/reloads the systemd service.
+
+#### Manual Service Setup
+To configure the user systemd service manually:
+
+```bash
+# 1. Install binary and Wayland wrapper script
 mkdir -p ~/.local/bin
 cp target/release/rgb-server ~/.local/bin/
+cp rgb-server-wrapper.sh ~/.local/bin/
+chmod +x ~/.local/bin/rgb-server ~/.local/bin/rgb-server-wrapper.sh
 
 # 2. Install user systemd service
 mkdir -p ~/.config/systemd/user

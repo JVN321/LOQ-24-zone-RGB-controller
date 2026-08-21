@@ -19,6 +19,7 @@ pub struct AmbientConfig {
     /// 3: Dominant Hue (Color-pure modal clustering)
     /// 4: Peak Chroma (Maximum accent preservation)
     /// 5: Natural Cinema Average (Accurate linear sRGB balance)
+    /// 6: Classic Saturated Average (Original pre-Linux ambient effect)
     pub algorithm: u8,
 
     /// Saturation multiplier (default 2.2, range 0.5 - 4.0)
@@ -108,6 +109,11 @@ impl RgbF {
         Self { r: self.r * s, g: self.g * s, b: self.b * s }
     }
 
+    #[inline]
+    pub fn luminance(self) -> f32 {
+        0.2126 * self.r + 0.7152 * self.g + 0.0722 * self.b
+    }
+
     pub fn to_color(self) -> Color {
         Color::new(
             (self.r.clamp(0.0, 1.0) * 255.0).round() as u8,
@@ -117,11 +123,37 @@ impl RgbF {
     }
 
     /// Process color through the post-processing pipeline:
-    /// - Black level cutoff with smooth rolloff
-    /// - Gamma contrast curve
-    /// - Saturation boost
-    /// - Minimum brightness floor & gain
+    /// - For Algorithm 6 (Classic Original): Rec.709 chroma-luminance vector saturation boost & gain
+    /// - For Algorithms 0-5: Black level cutoff with smooth rolloff, Gamma contrast curve, Saturation boost & floor
     pub fn process_color(self, cfg: &AmbientConfig) -> Self {
+        // Algorithm 6: Original classic pre-Linux algorithm with Rec.709 chroma-luminance saturation vector expansion
+        if cfg.algorithm == 6 {
+            let l = self.luminance();
+            let cutoff = cfg.black_cutoff.clamp(0.0, 0.95);
+            if l <= cutoff || l < 0.001 {
+                if cfg.min_brightness > 0.001 {
+                    let mb = cfg.min_brightness.clamp(0.0, 1.0);
+                    return RgbF::new(mb, mb, mb);
+                }
+                return RgbF::black();
+            }
+
+            // Classic Rec.709 saturation boost (pull vector away from luminance gray)
+            let gray = RgbF::new(l, l, l);
+            let diff = self.sub(gray);
+            let sat = cfg.saturation;
+            let s = gray.add(diff.scale(sat));
+
+            let gain = cfg.brightness_boost;
+            let contrast = cfg.contrast.clamp(0.2, 4.0);
+
+            let r = if s.r > 0.0 { (s.r.powf(contrast) * gain).max(cfg.min_brightness).clamp(0.0, 1.0) } else { cfg.min_brightness.clamp(0.0, 1.0) };
+            let g = if s.g > 0.0 { (s.g.powf(contrast) * gain).max(cfg.min_brightness).clamp(0.0, 1.0) } else { cfg.min_brightness.clamp(0.0, 1.0) };
+            let b = if s.b > 0.0 { (s.b.powf(contrast) * gain).max(cfg.min_brightness).clamp(0.0, 1.0) } else { cfg.min_brightness.clamp(0.0, 1.0) };
+
+            return RgbF::new(r, g, b);
+        }
+
         let (h, s, v) = rgb_to_hsv(self.r, self.g, self.b);
 
         // 1. Black cutoff threshold
@@ -241,6 +273,9 @@ pub fn extract_zone_color(samples: &[(f32, f32, f32)], algorithm: u8, black_cuto
 
         // Algorithm 5: Natural Cinema Average (Accurate linear sRGB balance)
         5 => extract_natural_average(samples, black_cutoff),
+
+        // Algorithm 6: Classic Saturated Average (Original pre-Linux ambient effect)
+        6 => extract_classic_original_average(samples, black_cutoff),
 
         // Fallback default
         _ => extract_vibrant_dominant(samples, black_cutoff),
@@ -496,6 +531,31 @@ fn extract_natural_average(samples: &[(f32, f32, f32)], black_cutoff: f32) -> Rg
     for &(r, g, b) in samples {
         let max = r.max(g).max(b);
         if max >= black_cutoff {
+            sum_r += r;
+            sum_g += g;
+            sum_b += b;
+            count += 1;
+        }
+    }
+
+    if count > 0 {
+        RgbF::new(sum_r / count as f32, sum_g / count as f32, sum_b / count as f32)
+    } else {
+        RgbF::black()
+    }
+}
+
+/// Algorithm 6: Classic Saturated Average (Original Pre-Linux Windows Ambient Lighting)
+/// Direct linear downsampling of zone pixels with Rec.709 chroma-luminance saturation vector expansion.
+fn extract_classic_original_average(samples: &[(f32, f32, f32)], black_cutoff: f32) -> RgbF {
+    let mut sum_r = 0.0f32;
+    let mut sum_g = 0.0f32;
+    let mut sum_b = 0.0f32;
+    let mut count = 0;
+
+    for &(r, g, b) in samples {
+        let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if luma >= black_cutoff {
             sum_r += r;
             sum_g += g;
             sum_b += b;
@@ -1153,5 +1213,49 @@ impl<S: ScreenSampler + 'static> Drop for AmbientEffect<S> {
         if let Some(handle) = self.thread_handle.take() {
             let _ = handle.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_classic_original_average() {
+        let samples = vec![
+            (1.0, 0.0, 0.0), // Red (luma = 0.2126)
+            (0.0, 1.0, 0.0), // Green (luma = 0.7152)
+            (0.0, 0.0, 0.0), // Black (luma = 0.0)
+        ];
+
+        // With black cutoff 0.05, the black pixel is excluded, averaging Red and Green -> (0.5, 0.5, 0.0)
+        let color = extract_zone_color(&samples, 6, 0.05);
+        assert!((color.r - 0.5).abs() < 1e-4);
+        assert!((color.g - 0.5).abs() < 1e-4);
+        assert_eq!(color.b, 0.0);
+    }
+
+    #[test]
+    fn test_process_color_algorithm_6() {
+        let mut cfg = AmbientConfig::default();
+        cfg.algorithm = 6;
+        cfg.saturation = 2.0;
+        cfg.contrast = 1.0;
+        cfg.brightness_boost = 1.0;
+        cfg.black_cutoff = 0.0;
+        cfg.min_brightness = 0.0;
+
+        let input = RgbF::new(0.6, 0.4, 0.2);
+        let luma: f32 = 0.2126 * 0.6 + 0.7152 * 0.4 + 0.0722 * 0.2;
+        let processed = input.process_color(&cfg);
+
+        // Expected: luma + (channel - luma) * 2.0
+        let exp_r = (luma + (0.6f32 - luma) * 2.0f32).clamp(0.0f32, 1.0f32);
+        let exp_g = (luma + (0.4f32 - luma) * 2.0f32).clamp(0.0f32, 1.0f32);
+        let exp_b = (luma + (0.2f32 - luma) * 2.0f32).clamp(0.0f32, 1.0f32);
+
+        assert!((processed.r - exp_r).abs() < 1e-4);
+        assert!((processed.g - exp_g).abs() < 1e-4);
+        assert!((processed.b - exp_b).abs() < 1e-4);
     }
 }
