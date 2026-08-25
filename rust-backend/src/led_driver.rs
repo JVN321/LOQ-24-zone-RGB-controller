@@ -437,6 +437,21 @@ impl LedController {
         std::thread::sleep(std::time::Duration::from_millis(15));
         Ok(())
     }
+
+    /// Force manual host takeover:
+    /// Re-executes the LampArray discovery handshake protocol, disables autonomous mode,
+    /// re-establishes connection if broken/disconnected, and re-applies brightness.
+    pub fn force_takeover(&mut self) -> Result<(), String> {
+        if !self.is_connected() {
+            self.connect()?;
+        } else if let Err(_) = self.set_autonomous_mode(false) {
+            // If the handle was stale or device reset, reconnect cleanly
+            self.reconnect()?;
+        }
+        let b = self.brightness;
+        self.set_brightness(b);
+        Ok(())
+    }
 }
 
 impl Drop for LedController {

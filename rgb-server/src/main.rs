@@ -322,6 +322,31 @@ async fn update_settings_api(
     (StatusCode::OK, Json(serde_json::json!({ "ok": true, "settings": cfg })))
 }
 
+/// POST /api/takeover — disable autonomous mode and redo LampArray discovery handshake to claim host control
+async fn force_takeover_api(
+    State(app): State<AppState>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ApiError>)> {
+    let mut s = app.ctrl.lock().unwrap();
+
+    match s.controller.force_takeover() {
+        Ok(()) => {
+            println!("⚡ [server] Manual host takeover triggered: LampArray handshake executed & autonomous mode disabled.");
+            // Restart active effect so hardware is immediately refreshed with effect frames
+            if let Some(ref mut effect) = s.current_effect {
+                effect.start();
+            }
+            Ok(Json(serde_json::json!({
+                "ok": true,
+                "message": "Autonomous mode disabled and LampArray handshake completed successfully."
+            })))
+        }
+        Err(e) => {
+            eprintln!("❌ [server] Manual host takeover failed: {}", e);
+            Err(api_err(format!("Failed to claim host control: {}", e)))
+        }
+    }
+}
+
 /// POST /api/brightness
 async fn set_brightness(
     State(app): State<AppState>,
@@ -488,6 +513,8 @@ async fn main() {
         .route("/api/cycle", post(cycle_preset_api).get(cycle_preset_api))
         .route("/api/settings", get(get_settings_api).post(update_settings_api))
         .route("/api/brightness", post(set_brightness))
+        .route("/api/takeover", post(force_takeover_api))
+        .route("/api/handshake", post(force_takeover_api))
         .route("/api/frame", get(get_frame))
         .route("/ws", get(ws_handler))
         .layer(CorsLayer::permissive())

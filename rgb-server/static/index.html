@@ -73,6 +73,67 @@
     .logo-text h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.5px; }
     .logo-text p { font-size: 11px; color: var(--text-muted); }
 
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .takeover-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      font-family: inherit;
+      color: #ede9fe;
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.16), rgba(217, 70, 239, 0.12));
+      border: 1px solid rgba(167, 139, 250, 0.35);
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+      user-select: none;
+    }
+
+    .takeover-btn:hover {
+      background: linear-gradient(135deg, rgba(139, 92, 246, 0.32), rgba(217, 70, 239, 0.24));
+      border-color: rgba(192, 132, 252, 0.6);
+      box-shadow: 0 0 16px rgba(139, 92, 246, 0.35), inset 0 1px 2px rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    .takeover-btn:active {
+      transform: translateY(0px) scale(0.97);
+    }
+
+    .takeover-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    .takeover-btn-icon {
+      font-size: 13px;
+      display: inline-block;
+      transition: transform 0.2s ease;
+    }
+
+    .takeover-btn.loading .takeover-btn-icon {
+      animation: spin-pulse 0.8s linear infinite;
+    }
+
+    @keyframes spin-pulse {
+      0% { transform: rotate(0deg) scale(1); }
+      50% { transform: rotate(180deg) scale(1.2); }
+      100% { transform: rotate(360deg) scale(1); }
+    }
+
     .status-badge {
       display: flex; align-items: center; gap: 8px;
       padding: 6px 14px;
@@ -925,9 +986,15 @@
       <p>Lenovo LOQ 24-Zone Control Center</p>
     </div>
   </div>
-  <div class="status-badge" id="statusBadge">
-    <div class="status-dot" id="statusDot"></div>
-    <span id="statusText">Connecting…</span>
+  <div class="header-right">
+    <button class="takeover-btn" id="btnTakeover" title="Turn off autonomous mode and perform LampArray discovery handshake to reclaim manual host control">
+      <span class="takeover-btn-icon" id="takeoverIcon">⚡</span>
+      <span class="takeover-btn-text" id="takeoverText">Takeover Control</span>
+    </button>
+    <div class="status-badge" id="statusBadge">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Connecting…</span>
+    </div>
   </div>
 </header>
 
@@ -956,6 +1023,14 @@
         </div>
         <button class="btn-sm" id="btnCycleNow" style="width:100%; padding:8px; font-weight:600; background:var(--surface-accent); border-color:var(--border-focus); color:#a78bfa;">Cycle Preset 🔄</button>
       </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Host & Hardware Control</div>
+      <button class="btn-sm" id="btnSidebarTakeover" style="width:100%; padding:8px; display:flex; align-items:center; justify-content:center; gap:8px; font-weight:600; background:rgba(139, 92, 246, 0.08); border-color:var(--border-focus); color:#c4b5fd;" title="Turn off autonomous mode and redo LampArray handshake">
+        <span id="sideTakeoverIcon">⚡</span>
+        <span id="sideTakeoverText">Takeover Host Control</span>
+      </button>
     </div>
 
     <div class="preset-search-container">
@@ -1025,6 +1100,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   setupBrightness();
   setupShortcutRecorder();
 
+  document.getElementById('btnTakeover').addEventListener('click', reclaimHostControl);
+  document.getElementById('btnSidebarTakeover').addEventListener('click', reclaimHostControl);
   document.getElementById('btnCycleNow').addEventListener('click', cyclePresetNow);
   document.addEventListener('mouseup', () => { isMouseDown = false; });
 });
@@ -1200,6 +1277,47 @@ async function saveCycleSettings() {
       preset_cycle_shortcut: presetCycleShortcut,
     });
   } catch(e) {}
+}
+
+async function reclaimHostControl() {
+  const btn = document.getElementById('btnTakeover');
+  const icon = document.getElementById('takeoverIcon');
+  const text = document.getElementById('takeoverText');
+  const sideBtn = document.getElementById('btnSidebarTakeover');
+  const sideIcon = document.getElementById('sideTakeoverIcon');
+  const sideText = document.getElementById('sideTakeoverText');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('loading');
+  }
+  if (sideBtn) sideBtn.disabled = true;
+  if (text) text.textContent = 'Handshaking…';
+  if (sideText) sideText.textContent = 'Handshaking…';
+  if (icon) icon.textContent = '🔄';
+  if (sideIcon) sideIcon.textContent = '🔄';
+
+  try {
+    const res = await api('POST', '/api/takeover');
+    if (res && res.ok) {
+      toast('⚡ Host control reclaimed! Autonomous mode disabled & LampArray handshake complete.', 'ok');
+      await refreshStatus();
+    } else {
+      toast(`Failed to claim host control: ${(res && res.error) || 'Unknown error'}`, 'err');
+    }
+  } catch (e) {
+    toast(`Takeover error: ${e.message || e}`, 'err');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('loading');
+    }
+    if (sideBtn) sideBtn.disabled = false;
+    if (text) text.textContent = 'Takeover Control';
+    if (sideText) sideText.textContent = 'Takeover Host Control';
+    if (icon) icon.textContent = '⚡';
+    if (sideIcon) sideIcon.textContent = '⚡';
+  }
 }
 
 async function cyclePresetNow() {
