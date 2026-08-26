@@ -14,7 +14,7 @@ echo -e "${BLUE}${BOLD}🎹 Lenovo LOQ RGB Controller — Automated Installer${N
 echo -e "--------------------------------------------------------"
 
 # 1. Detect Package Manager and Install System Dependencies
-echo -e "${BLUE}1/5 Detecting Linux distribution and installing system packages...${NC}"
+echo -e "${BLUE}1/4 Detecting Linux distribution and installing system packages...${NC}"
 
 if command -v pacman >/dev/null 2>&1; then
     echo -e "${GREEN}Detected Arch Linux (pacman). Installing dependencies...${NC}"
@@ -33,19 +33,37 @@ else
     echo -e "${YELLOW}Warning: Distro package manager not recognized. Please ensure build dependencies are installed.${NC}"
 fi
 
-# 2. Check Rust & Cargo
-if ! command -v cargo >/dev/null 2>&1; then
-    echo -e "${YELLOW}Cargo toolchain not found. Installing Rust...${NC}"
-    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+# 2. Locate or Build Binary
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BIN_PATH=""
+
+if [ -f "$SCRIPT_DIR/rgb-server" ]; then
+    echo -e "${GREEN}✓ Found precompiled rgb-server binary.${NC}"
+    BIN_PATH="$SCRIPT_DIR/rgb-server"
+elif [ -f "$SCRIPT_DIR/target/release/rgb-server" ]; then
+    echo -e "${GREEN}✓ Found existing compiled binary in target/release/.${NC}"
+    BIN_PATH="$SCRIPT_DIR/target/release/rgb-server"
+else
+    echo -e "${BLUE}2/4 Precompiled binary not found. Compiling from source...${NC}"
+    
+    # Check Rust & Cargo
+    if ! command -v cargo >/dev/null 2>&1; then
+        echo -e "${YELLOW}Cargo toolchain not found. Installing Rust...${NC}"
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    fi
+    if [ -f "$HOME/.cargo/env" ]; then
+        source "$HOME/.cargo/env" 2>/dev/null || true
+    fi
+    export PATH="$HOME/.cargo/bin:$PATH"
+
+    cd "$SCRIPT_DIR"
+    cargo build --release
+    BIN_PATH="$SCRIPT_DIR/target/release/rgb-server"
+    echo -e "${GREEN}✓ Build completed successfully.${NC}"
 fi
-if [ -f "$HOME/.cargo/env" ]; then
-    source "$HOME/.cargo/env" 2>/dev/null || true
-fi
-export PATH="$HOME/.cargo/bin:$PATH"
 
 # 3. Hardware Permissions (udev & groups)
-echo -e "${BLUE}2/5 Setting up udev rules and user groups...${NC}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo -e "${BLUE}3/4 Setting up udev rules and user groups...${NC}"
 if [ -f "$SCRIPT_DIR/99-loq-rgb.rules" ]; then
     sudo cp "$SCRIPT_DIR/99-loq-rgb.rules" /etc/udev/rules.d/
     sudo udevadm control --reload-rules
@@ -57,25 +75,12 @@ else
     echo -e "${YELLOW}Warning: 99-loq-rgb.rules file not found.${NC}"
 fi
 
-# 4. Build Project
-echo -e "${BLUE}3/5 Compiling Rust workspace...${NC}"
-cd "$SCRIPT_DIR"
-cargo build --release
-echo -e "${GREEN}✓ Build completed successfully.${NC}"
-
-# 5. Disable Autonomous Mode
-echo -e "${BLUE}4/5 Disabling autonomous mode on RGB controller...${NC}"
-if cargo run --release --manifest-path "$SCRIPT_DIR/rust-backend/Cargo.toml" --example disable_autonomous; then
-    echo -e "${GREEN}✓ Keyboard host control verified.${NC}"
-else
-    echo -e "${YELLOW}Warning: Autonomous mode disabler returned non-zero code. Proceeding with service setup...${NC}"
-fi
-
-# 6. Install & Setup systemd Service
-echo -e "${BLUE}5/5 Deploying binary and configuring systemd user service...${NC}"
+# 4. Install & Setup systemd Service
+echo -e "${BLUE}4/4 Deploying binary and configuring systemd user service...${NC}"
 mkdir -p "$HOME/.local/bin"
-cp "$SCRIPT_DIR/target/release/rgb-server" "$HOME/.local/bin/rgb-server"
+cp "$BIN_PATH" "$HOME/.local/bin/rgb-server"
 chmod +x "$HOME/.local/bin/rgb-server"
+echo -e "${GREEN}✓ Installed rgb-server to ~/.local/bin/${NC}"
 
 if [ -f "$SCRIPT_DIR/rgb-server-wrapper.sh" ]; then
     cp "$SCRIPT_DIR/rgb-server-wrapper.sh" "$HOME/.local/bin/rgb-server-wrapper.sh"

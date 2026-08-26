@@ -22,6 +22,12 @@
 debug_log.txt
 *.log
 
+# Release packaging outputs
+*.tar.gz
+*.sha256
+dist/
+
 # OS-specific files
 .DS_Store
 Thumbs.db
+

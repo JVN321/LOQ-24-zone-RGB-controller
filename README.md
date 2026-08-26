@@ -8,17 +8,32 @@ A lightweight, native high-performance Linux daemon and web controller for manag
 
 ## Quick Start & Installation
 
-### Option A: Automated 1-Step Installer (Recommended)
+### Option A: Prebuilt Universal Release (Recommended — No Compiler Needed)
 
-Run the installer script — it automatically detects your Linux distribution (Arch, Fedora, Debian/Ubuntu), installs required system packages, sets up udev hardware permissions, compiles the workspace, and enables the systemd daemon:
+Download and extract the latest precompiled release archive for your Linux system:
+
+```bash
+# 1. Download and extract the latest release archive
+curl -sSL https://github.com/JVN321/LOQ-24-zone-RGB-controller/releases/latest/download/loq-rgb-controller-linux-x86_64.tar.gz | tar -xz
+cd loq-rgb-controller-linux-x86_64
+
+# 2. Run the quick installer
+./install.sh
+```
+
+Open your browser at **[http://127.0.0.1:7070](http://127.0.0.1:7070)**.
+
+---
+
+### Option B: Build from Source (Git Clone)
+
+If you prefer to compile directly from source:
 
 ```bash
 git clone https://github.com/JVN321/LOQ-24-zone-RGB-controller.git
 cd LOQ-24-zone-RGB-controller
 ./install.sh
 ```
-
-Open your browser at **[http://127.0.0.1:7070](http://127.0.0.1:7070)**.
 
 #### Updating & Deploying Changes
 Whenever you pull updates or modify code, use the automated deployment script to rebuild, stop running daemons safely, update binaries, and restart the service:
@@ -29,7 +44,8 @@ Whenever you pull updates or modify code, use the automated deployment script to
 
 ---
 
-### Option B: Manual Installation
+### Option C: Manual Installation
+
 
 #### 1. Install System Dependencies
 
