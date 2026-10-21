@@ -36,6 +36,7 @@ use crate::presets::{
     audio_sparkle_rainbow::AudioSparkleRainbowEffect,
     audio_ripple::AudioRippleEffect,
     rainbow_ripple::RainbowRippleEffect,
+    reactive_row::ReactiveRowEffect,
     ParameterValue,
     PresetConfig,
 };
@@ -624,6 +625,16 @@ fn build_effect_inner(
             getf!("width", 3.0),
             getf!("lifetime", 1.0),
             getf!("base_brightness", 0.20),
+        )),
+        "reactive_row"      => Box::new(ReactiveRowEffect::new(
+            getf!("color_mode", 1.0) as u8,
+            getc!("color", 0, 220, 255),
+            getc!("bg_color", 0, 0, 0),
+            getf!("hold_time", 0.5),
+            getf!("fade_time", 1.0),
+            getf!("width", 1.0),
+            getf!("color_speed", 1.0),
+            getf!("invert", 0.0) >= 0.5,
         )),
         "ambient" => {
             let smoothing = getf!("smoothing", 0.0);

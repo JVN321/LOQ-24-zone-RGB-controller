@@ -1538,6 +1538,37 @@ function renderParams(preset) {
         paramValues[p.name] = parseFloat(e.target.value);
         debouncedApplyPreset();
       });
+    } else if (p.name === 'color_mode') {
+      card.innerHTML = `
+        <div class="param-label">${p.label}</div>
+        <select class="param-select" id="param-${p.name}">
+          <option value="0">Solid Color</option>
+          <option value="1">🌈 Keystroke Hue Shift (Cycles color per keystroke)</option>
+          <option value="2">🌊 Flowing Rainbow Wave</option>
+          <option value="3">🎨 Keyboard Spectrum (Full gradient)</option>
+          <option value="4">✨ Random Color Pop</option>
+        </select>
+      `;
+      const select = card.querySelector('select');
+      select.value = Math.round(val).toString();
+      select.addEventListener('change', e => {
+        paramValues[p.name] = parseFloat(e.target.value);
+        debouncedApplyPreset();
+      });
+    } else if (p.name === 'invert') {
+      card.innerHTML = `
+        <div class="param-label">${p.label}</div>
+        <select class="param-select" id="param-${p.name}">
+          <option value="0">Normal (Light up on press)</option>
+          <option value="1">Inverted (Dim / Blackout on press)</option>
+        </select>
+      `;
+      const select = card.querySelector('select');
+      select.value = Math.round(val).toString();
+      select.addEventListener('change', e => {
+        paramValues[p.name] = parseFloat(e.target.value);
+        debouncedApplyPreset();
+      });
     } else if (p.param_type.type === 'Color') {
       const hex = rgbToHex(val.r, val.g, val.b);
 
@@ -2440,6 +2471,39 @@ function renderLayeredEditor(container) {
               `;
               const select = row.querySelector('select');
               select.value = Math.round(layer.parameters[p.name] || p.default).toString();
+              select.addEventListener('change', e => {
+                layer.parameters[p.name] = parseFloat(e.target.value);
+                syncLayeredConfigJSON();
+                debouncedApplyPreset();
+              });
+            } else if (p.name === 'color_mode') {
+              row.innerHTML = `
+                <div class="param-label" style="font-size:9px;">${p.label}</div>
+                <select class="param-select" style="padding: 6px 8px; font-size:12px;">
+                  <option value="0">Solid Color</option>
+                  <option value="1">🌈 Keystroke Hue Shift</option>
+                  <option value="2">🌊 Flowing Rainbow Wave</option>
+                  <option value="3">🎨 Keyboard Spectrum</option>
+                  <option value="4">✨ Random Color Pop</option>
+                </select>
+              `;
+              const select = row.querySelector('select');
+              select.value = Math.round(layer.parameters[p.name] !== undefined ? layer.parameters[p.name] : p.default).toString();
+              select.addEventListener('change', e => {
+                layer.parameters[p.name] = parseFloat(e.target.value);
+                syncLayeredConfigJSON();
+                debouncedApplyPreset();
+              });
+            } else if (p.name === 'invert') {
+              row.innerHTML = `
+                <div class="param-label" style="font-size:9px;">${p.label}</div>
+                <select class="param-select" style="padding: 6px 8px; font-size:12px;">
+                  <option value="0">Normal (Light up on press)</option>
+                  <option value="1">Inverted (Dim on press)</option>
+                </select>
+              `;
+              const select = row.querySelector('select');
+              select.value = Math.round(layer.parameters[p.name] !== undefined ? layer.parameters[p.name] : p.default).toString();
               select.addEventListener('change', e => {
                 layer.parameters[p.name] = parseFloat(e.target.value);
                 syncLayeredConfigJSON();

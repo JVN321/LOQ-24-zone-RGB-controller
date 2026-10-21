@@ -31,3 +31,5 @@ dist/
 .DS_Store
 Thumbs.db
 
+graphify-out/
+.codegraph/

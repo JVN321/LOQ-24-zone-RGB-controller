@@ -215,7 +215,7 @@ The Lenovo LOQ keyboard features 24 physical RGB zones across the keyboard:
 | **Dynamic & Ambient** | Rainbow Wave, Rainbow Cycle, Rainbow Breath, Color Wheel, Color Sweep, Color Scan, Aurora, Nebula, Sparkle, Chromatic Breath, Breathing, Pulse, Ferrari RPM |
 | **System & Hardware** | CPU-Mem-GPU Thermal Status, Screen Ambiance *(Wayland/X11 Screen Capture)* |
 | **Audio Reactive** | Audio Sparkle, Audio Sparkle Rainbow, Audio Sparkle Media, Audio Ripple *(PipeWire Loopback)* |
-| **Typing Reactive** | Typing Rainbow Ripple, Keyboard Wave *(Water ripple physics on keypress)* |
+| **Typing Reactive** | Typing Rainbow Ripple, Keyboard Wave *(Water ripple physics on keypress)*, Reactive Row *(Row keypress hold & fade with multi-mode rainbow shifts & inversion)* |
 | **Custom & Layering** | Interactive 24-Zone Static Color Palette, Multi-Effect Layering with opacity & priority stacking |
 
 ---

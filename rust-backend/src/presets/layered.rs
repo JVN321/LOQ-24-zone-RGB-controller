@@ -32,7 +32,7 @@ impl Effect for LayeredEffect {
         // We set suspend_flushing to true to avoid intermediate HID writes or latency delays
         controller.suspend_flushing = true;
 
-        for layer in &mut self.layers {
+        for (layer_idx, layer) in self.layers.iter_mut().enumerate() {
             // Clear buffer before running this layer
             controller.fill(Color::black());
             
@@ -41,9 +41,36 @@ impl Effect for LayeredEffect {
             
             // Extract the result and blend it into accum_buffer
             let written = controller.get_buffer();
+            let opacity = layer.opacity.clamp(0.0, 1.0);
+
             for i in 0..NUM_ZONES {
-                let opacity = layer.opacity.clamp(0.0, 1.0);
-                accum_buffer[i] = accum_buffer[i].lerp(&written[i], opacity);
+                let top = written[i];
+
+                if layer_idx == 0 {
+                    // Base layer: sets initial buffer
+                    accum_buffer[i] = Color::black().lerp(&top, opacity);
+                } else {
+                    // Overlay layers: if top is black, preserve bottom effect;
+                    // if top has color, override bottom effect set color.
+                    if top.r == 0 && top.g == 0 && top.b == 0 {
+                        continue;
+                    }
+
+                    let max_c = (top.r.max(top.g).max(top.b)) as f32;
+                    let brightness = (max_c / 255.0).clamp(0.0, 1.0);
+
+                    // Reconstruct full chromatic color so fading effects smoothly
+                    // crossfade from the top color back into the bottom effect's color
+                    let scale = 255.0 / max_c;
+                    let full_chroma = Color::new(
+                        (top.r as f32 * scale).round().clamp(0.0, 255.0) as u8,
+                        (top.g as f32 * scale).round().clamp(0.0, 255.0) as u8,
+                        (top.b as f32 * scale).round().clamp(0.0, 255.0) as u8,
+                    );
+
+                    let effective_alpha = (brightness * opacity).clamp(0.0, 1.0);
+                    accum_buffer[i] = accum_buffer[i].lerp(&full_chroma, effective_alpha);
+                }
             }
         }
 

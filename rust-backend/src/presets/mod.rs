@@ -758,6 +758,85 @@ pub fn get_available_presets() -> Vec<PresetMetadata> {
                 },
             ],
         },
+        PresetMetadata {
+            name: "reactive_row".to_string(),
+            display_name: "Reactive Row".to_string(),
+            description: "Illuminates the row of pressed keys, holds, then smoothly fades out. Supports multiple color modes (keystroke rainbow shift, flowing wave, spectrum), invert mode, and width spread.".to_string(),
+            parameters: vec![
+                ParameterConfig {
+                    name: "color_mode".to_string(),
+                    label: "Color Mode".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.0,
+                    max: 4.0,
+                    default: 1.0,
+                    step: 1.0,
+                },
+                ParameterConfig {
+                    name: "color".to_string(),
+                    label: "Active Color (Solid Mode)".to_string(),
+                    param_type: ParameterType::Color { r: 0, g: 220, b: 255 },
+                    min: 0.0,
+                    max: 0.0,
+                    default: 0.0,
+                    step: 0.0,
+                },
+                ParameterConfig {
+                    name: "bg_color".to_string(),
+                    label: "Background Color".to_string(),
+                    param_type: ParameterType::Color { r: 0, g: 0, b: 0 },
+                    min: 0.0,
+                    max: 0.0,
+                    default: 0.0,
+                    step: 0.0,
+                },
+                ParameterConfig {
+                    name: "hold_time".to_string(),
+                    label: "Hold Duration (sec)".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.0,
+                    max: 5.0,
+                    default: 0.5,
+                    step: 0.05,
+                },
+                ParameterConfig {
+                    name: "fade_time".to_string(),
+                    label: "Fade Duration (sec)".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.05,
+                    max: 5.0,
+                    default: 1.0,
+                    step: 0.05,
+                },
+                ParameterConfig {
+                    name: "width".to_string(),
+                    label: "Row Width / Spread".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 1.0,
+                    max: 5.0,
+                    default: 1.0,
+                    step: 1.0,
+                },
+                ParameterConfig {
+                    name: "color_speed".to_string(),
+                    label: "Color Shift Speed / Step".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.1,
+                    max: 5.0,
+                    default: 1.0,
+                    step: 0.1,
+                },
+                ParameterConfig {
+                    name: "invert".to_string(),
+                    label: "Invert (0 = Normal, 1 = Inverted)".to_string(),
+                    param_type: ParameterType::Float,
+                    min: 0.0,
+                    max: 1.0,
+                    default: 0.0,
+                    step: 1.0,
+                },
+            ],
+        },
     ]
 }
 
@@ -791,3 +870,4 @@ pub mod rainbow_ripple;
 pub mod audio_ripple;
 pub mod layered;
 pub mod keyboard_wave;
+pub mod reactive_row;
